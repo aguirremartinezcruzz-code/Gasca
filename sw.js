@@ -1,6 +1,6 @@
 // Service worker mínimo: permite instalar la app y abrirla aunque la conexión sea mala.
 // Siempre intenta primero la red para que los cambios nuevos se vean enseguida.
-const CACHE = 'gasca-v1';
+const CACHE = 'gasca-v2';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'firebase-config.js', 'manifest.webmanifest', 'icon-192.png'];
 
 self.addEventListener('install', (e) => {
