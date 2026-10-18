@@ -1158,3 +1158,18 @@ setMode('login');
 render();
 setInterval(() => { if (S.user && view() !== 'verify') render(); }, 30000);
 if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); }); }
+
+/* Instalar con un toque: en Android muestra un botón "Instalar Gasca" en la pantalla de entrada. */
+(function () {
+  const hint = document.getElementById('installHint');
+  if (!hint) return;
+  if ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone) { hint.hidden = true; return; }
+  let ev = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault(); ev = e;
+    hint.innerHTML = '<b>Instala Gasca en tu celular</b><button class="btn primary block" type="button" id="installBtn">Instalar Gasca</button>';
+    const b = document.getElementById('installBtn');
+    if (b) b.addEventListener('click', async () => { try { ev.prompt(); await ev.userChoice; } catch (_) {} ev = null; hint.hidden = true; });
+  });
+  window.addEventListener('appinstalled', () => { hint.hidden = true; });
+})();
