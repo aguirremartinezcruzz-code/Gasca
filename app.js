@@ -7,7 +7,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
   initializeFirestore, doc, getDoc, getDocs, setDoc, updateDoc, collection, query, where,
-  orderBy, limit, onSnapshot, runTransaction, increment
+  orderBy, limit, onSnapshot, runTransaction, increment, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
 const $ = (s, r) => (r || document).querySelector(s);
@@ -61,7 +61,7 @@ function resetData() {
   Object.assign(S, {
     profile: null, profileReady: false, role: null, name: '', addr: '', myAprob: null, aprReady: false, fotos: {},
     consent: false, verEdit: false, uploading: {}, perm: false, dbErr: false, tab: '',
-    orders: [], openOrders: [], myOrders: [], known: new Set(), openReady: false, prev: new Map(),
+    codes: {}, orders: [], openOrders: [], myOrders: [], known: new Set(), openReady: false, prev: new Map(),
     wallet: null, walletReady: false, movs: [], recargas: [], pago: '', pagoDirty: false,
     users: [], aprobs: {}, wallets: {}, presence: {}, review: null, revPhotos: null, suspId: null, motivo: '',
     online: false, queue: [], ignored: new Set(), sheetId: null, sheetTaken: null, sheetKey: '',
@@ -377,6 +377,7 @@ function startRole() {
     listen(roleUnsubs, doc(db, 'config', 'pago'), (s) => { S.pago = (s.exists() && s.data().texto) || ''; render(); });
   } else {
     listen(roleUnsubs, query(collection(db, 'orders'), where('shopId', '==', S.uid)), onShopOrders);
+    listen(roleUnsubs, query(collection(db, 'codes'), where('shopId', '==', S.uid)), (snap) => { const c = {}; snap.docs.forEach((d) => { const v = d.data(); if (v && v.codigo) c[d.id] = v.codigo; }); S.codes = c; render(); });
   }
 }
 async function ensureWallet() {
@@ -437,7 +438,11 @@ setInterval(() => { if (document.visibilityState === 'visible') pushPresence(); 
 /* ---------- acciones de pedidos ---------- */
 async function createOrder(o) {
   const id = newId();
-  await setDoc(doc(db, 'orders', id), Object.assign({ id, estado: 'abierto', driverId: '', driverName: '', creadoEn: Date.now() }, o));
+  const codigo = String(1000 + Math.floor(Math.random() * 9000));
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'orders', id), Object.assign({ id, estado: 'abierto', driverId: '', driverName: '', creadoEn: Date.now() }, o));
+  batch.set(doc(db, 'codes', id), { shopId: S.uid, codigo });
+  await batch.commit();
   return id;
 }
 
@@ -474,7 +479,7 @@ async function picked(id) {
 }
 
 /* Entregar y descontar la comisión van juntas: o pasan las dos o no pasa ninguna. */
-async function delivered(id) {
+async function delivered(id, codigoIn) {
   const o = byId(id);
   if (!canAct() || !o || o.driverId !== S.uid || o.estado !== 'recogido' || S.busy.has(id)) return;
   S.busy.add(id); render();
@@ -486,16 +491,18 @@ async function delivered(id) {
       if (!d || d.estado !== 'recogido' || d.driverId !== S.uid) throw new Error('state');
       if (!ws.exists()) throw new Error('nowallet');
       const com = (Number(d.tarifa) || 0) * COM_C, now = Date.now();
-      tx.update(oref, { estado: 'entregado', entregadoEn: now });
+      tx.update(oref, { estado: 'entregado', entregadoEn: now, codigoIn });
       tx.update(wref, { saldoC: (Number(ws.data().saldoC) || 0) - com, lastOrder: id });
       tx.set(doc(db, 'movs', 'cm_' + id), { driverId: S.uid, tipo: 'comision', montoC: -com, orderId: id, creadoEn: now });
     });
     toast('Entrega registrada. Se descontó ' + cents(comC(o)) + ' de comisión.');
   } catch (e) {
-    if (e && e.message === 'nowallet') { await ensureWallet(); toast('Se estaba abriendo tu saldo. Vuelve a tocar "Ya entregué".'); }
+    if (e && (e.code === 'permission-denied' || /permission/i.test(e.message || ''))) { codeFail(); }
+    else if (e && e.message === 'nowallet') { await ensureWallet(); toast('Se estaba abriendo tu saldo. Vuelve a tocar "Ya entregué".'); }
     else toast('No se pudo registrar la entrega. Intenta de nuevo.');
   }
   S.busy.delete(id); render();
+  return true;
 }
 
 async function cancelOrder(id) {
@@ -734,7 +741,13 @@ function shopCard(o) {
   if (o.estado === 'abierto') s = '<div class="status"><span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>Buscando repartidor</div>';
   else if (o.estado === 'asignado') s = '<div class="status"><b>' + esc(o.driverName || 'Un repartidor') + '</b> va por el pedido · ' + ago(o.asignadoEn || o.creadoEn) + '</div>';
   else if (o.estado === 'recogido') s = '<div class="status"><b>' + esc(o.driverName || 'El repartidor') + '</b> ya salió con el pedido</div>';
-  else if (o.estado === 'entregado') s = '<div class="status">Entregado por <b>' + esc(o.driverName || 'el repartidor') + '</b></div>';
+  const cod = S.codes[o.id];
+  if (cod && (o.estado === 'abierto' || o.estado === 'asignado' || o.estado === 'recogido')) {
+    const wa = waUrl(o.tel);
+    s += '<div class="codebox"><small>Código de entrega · dáselo a tu cliente</small><b>' + esc(cod) + '</b><span>El repartidor lo necesita para terminar la entrega.</span>' +
+      (wa ? '<a class="btn ghost small" target="_blank" rel="noopener" href="' + esc(wa + '?text=' + encodeURIComponent('Tu código de entrega es ' + cod + '. Dáselo al repartidor cuando llegue.')) + '">Enviar por WhatsApp</a>' : '') + '</div>';
+  }
+  if (o.estado === 'entregado') s = '<div class="status">Entregado por <b>' + esc(o.driverName || 'el repartidor') + '</b></div>';
   let act = '';
   if (o.estado === 'abierto') {
     act = S.cancelId === o.id
@@ -1145,7 +1158,7 @@ document.addEventListener('click', (e) => {
   else if (act === 'susp-yes') resolveAlta(id, false, 'Cuenta suspendida por la administración.');
   else if (act === 'zoom') openZoom(b.getAttribute('src'));
   else if (act === 'picked') picked(id);
-  else if (act === 'delivered') delivered(id);
+  else if (act === 'delivered') askCode(id);
   else if (act === 'online') {
     S.online = !S.online;
     if (S.online) { ensureAudio(); beep([784]); queueOpen(); holdWake(); } else { S.queue = []; releaseWake(); }
@@ -1225,3 +1238,48 @@ if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navi
     '.ficha .k{color:var(--muted)}.ficha .amt,.ficha .num,.ficha .v{color:var(--ink)}.ficha .num{font-size:24px}';
   document.head.appendChild(s);
 })();
+
+
+/* ---------- código de entrega (anti-estafas) ---------- */
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '.codebox{margin:10px 0;padding:12px;border:2px dashed var(--line);border-radius:12px;text-align:center;background:var(--surface);color:var(--ink)}' +
+    '.codebox b{display:block;font-size:34px;letter-spacing:8px;margin:4px 0}.codebox small,.codebox span{display:block;color:var(--muted);font-size:13px}.codebox .btn{margin-top:8px}' +
+    '#codeModal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px}' +
+    '#codeModal .box{background:var(--surface);color:var(--ink);border-radius:16px;padding:20px;width:100%;max-width:340px;text-align:center}' +
+    '#codeModal input{width:100%;font-size:32px;text-align:center;letter-spacing:10px;padding:10px;margin:12px 0;border:2px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);box-sizing:border-box}' +
+    '#codeModal .err{color:#d33;min-height:20px;font-size:14px}#codeModal .btn{width:100%;margin-top:8px}';
+  document.head.appendChild(st);
+})();
+let codeTries = 0, codeLock = 0, codeId = null;
+function closeCode() { const m = document.getElementById('codeModal'); if (m) m.remove(); codeId = null; }
+function codeFail() {
+  codeTries++;
+  const e = document.querySelector('#codeModal .err');
+  if (codeTries >= 3) { codeLock = Date.now() + 60000; codeTries = 0; }
+  if (e) e.textContent = Date.now() < codeLock ? 'Demasiados intentos. Espera 1 minuto.' : 'Código incorrecto. Pídeselo al cliente.';
+  const i = document.getElementById('codeIn'); if (i) { i.value = ''; i.focus(); }
+}
+function askCode(id) {
+  const o = byId(id);
+  if (!canAct() || !o || o.estado !== 'recogido' || document.getElementById('codeModal')) return;
+  codeId = id;
+  const m = document.createElement('div'); m.id = 'codeModal';
+  m.innerHTML = '<div class="box"><h3>Código de entrega</h3><p>Pídele al cliente el código de 4 números que le dio el negocio.</p>' +
+    '<input id="codeIn" type="text" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="----"><div class="err"></div>' +
+    '<button class="btn primary" type="button" id="codeOk">Confirmar entrega</button><button class="btn ghost" type="button" id="codeNo">Cancelar</button></div>';
+  document.body.appendChild(m);
+  const inp = document.getElementById('codeIn'); inp.focus();
+  inp.addEventListener('input', () => { inp.value = inp.value.replace(/\D/g, '').slice(0, 4); });
+  document.getElementById('codeNo').addEventListener('click', closeCode);
+  document.getElementById('codeOk').addEventListener('click', async () => {
+    const v = inp.value;
+    const err = m.querySelector('.err');
+    if (Date.now() < codeLock) { err.textContent = 'Demasiados intentos. Espera 1 minuto.'; return; }
+    if (v.length !== 4) { err.textContent = 'Escribe los 4 números.'; return; }
+    const okBtn = document.getElementById('codeOk'); okBtn.disabled = true;
+    await delivered(id, v);
+    const cur = byId(id);
+    if (cur && cur.estado === 'entregado') closeCode(); else if (okBtn.isConnected) okBtn.disabled = false;
+  });
+}
