@@ -246,3 +246,7 @@ h2.section { font-family: var(--font-display); font-weight: 700; font-size: 26px
 .ph img.ticket, .thumb.ticket { max-height: 160px; }
 .menu { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .menu .hint { flex: 1 1 100%; overflow-wrap: anywhere; }
+
+.ficha { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 2px dashed #b8c0cc; border-radius: 14px; background: #fff; margin: 10px 0; }
+.ficha .amt { font-family: var(--font-display); font-weight: 700; font-size: 34px; line-height: 1.1; }
+.ficha .num { font-family: var(--font-display); font-weight: 700; font-size: 28px; letter-spacing: 0.06em; line-height: 1.2; font-variant-numeric: tabular-nums; user-select: all; overflow-wrap: anywhere; }
