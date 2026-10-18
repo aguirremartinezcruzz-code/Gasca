@@ -1173,3 +1173,47 @@ if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navi
   });
   window.addEventListener('appinstalled', () => { hint.hidden = true; });
 })();
+
+/* Actualización automática: si hay una versión nueva, la app se recarga sola cuando no estorba. */
+(function () {
+  let base = null, pending = false, warned = false;
+  const hash = (t) => { let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0; return h + ':' + t.length; };
+  const fetchHash = async (fresh) => {
+    const r = await fetch(import.meta.url.split('?')[0], fresh ? { cache: 'no-store' } : undefined);
+    if (!r.ok) throw new Error('x');
+    return hash(await r.text());
+  };
+  const busyNow = () => {
+    try {
+      if (S.role === 'rider' && mine().some((o) => o.estado === 'asignado' || o.estado === 'recogido')) return true;
+      if (Object.keys(S.uploading || {}).length) return true;
+      if (S.sheetId) return true;
+      if (S.busy && S.busy.size) return true;
+      const a = document.activeElement;
+      if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return true;
+    } catch (_) { return true; }
+    return false;
+  };
+  const tryReload = () => {
+    if (!pending) return;
+    if (busyNow()) {
+      if (!warned) { warned = true; try { toast('Hay una versión nueva. Se actualiza al terminar lo que haces.'); } catch (_) {} }
+      return;
+    }
+    location.reload();
+  };
+  const check = async () => {
+    if (!navigator.onLine || document.hidden) return;
+    try {
+      if (base === null) { base = await fetchHash(false); return; }
+      if (pending) { tryReload(); return; }
+      const now = await fetchHash(true);
+      if (now !== base) { pending = true; tryReload(); }
+    } catch (_) { /* sin red: se intenta luego */ }
+  };
+  setTimeout(check, 4000);
+  setInterval(check, 5 * 60 * 1000);
+  setInterval(() => { if (pending) tryReload(); }, 20000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+  window.addEventListener('online', check);
+})();
