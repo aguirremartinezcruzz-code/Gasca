@@ -1217,3 +1217,11 @@ if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navi
   document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
   window.addEventListener('online', check);
 })();
+
+/* Colores de la ficha de depósito: siguen el tema claro/oscuro. */
+(function () {
+  const s = document.createElement('style');
+  s.textContent = '.ficha{background:var(--surface);color:var(--ink);border-color:var(--line)}' +
+    '.ficha .k{color:var(--muted)}.ficha .amt,.ficha .num,.ficha .v{color:var(--ink)}.ficha .num{font-size:24px}';
+  document.head.appendChild(s);
+})();
