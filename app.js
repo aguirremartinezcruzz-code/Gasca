@@ -61,7 +61,7 @@ function resetData() {
   Object.assign(S, {
     profile: null, profileReady: false, role: null, name: '', addr: '', myAprob: null, aprReady: false, fotos: {},
     consent: false, verEdit: false, uploading: {}, perm: false, dbErr: false, tab: '',
-    regRead: false, regOk: false, regTop: 0, codes: {}, orders: [], openOrders: [], myOrders: [], known: new Set(), openReady: false, prev: new Map(),
+    incs: [], incReady: false, incMine: new Set(), regRead: false, regOk: false, regTop: 0, codes: {}, orders: [], openOrders: [], myOrders: [], known: new Set(), openReady: false, prev: new Map(),
     wallet: null, walletReady: false, movs: [], recargas: [], pago: '', pagoDirty: false,
     users: [], aprobs: {}, wallets: {}, presence: {}, review: null, revPhotos: null, suspId: null, motivo: '',
     online: false, queue: [], ignored: new Set(), sheetId: null, sheetTaken: null, sheetKey: '',
@@ -73,7 +73,7 @@ function resetData() {
 }
 /* Al cambiar de cuenta en el mismo teléfono no debe quedar nada de la cuenta anterior. */
 function clearDom() {
-  ['#viewVerify', '#shopList', '#riderHead', '#riderAvail', '#riderTrips', '#walletTop', '#walletList', '#adminMonitor', '#adminAltas', '#adminRecargas', '#adminSaldos', '#sheet']
+  ['#viewVerify', '#shopList', '#riderHead', '#riderAvail', '#riderTrips', '#walletTop', '#walletList', '#adminMonitor', '#adminAltas', '#adminRecargas', '#adminSaldos', '#adminIncid', '#sheet']
     .forEach((s) => { const el = $(s); if (el) el.innerHTML = ''; });
   ['#o-pick', '#o-cliente', '#o-tel', '#o-dest', '#o-desc', '#o-cobro', '#o-tarifa', '#r-monto', '#a-pago', '#a-buscar']
     .forEach((s) => { const el = $(s); if (el) el.value = ''; });
@@ -372,7 +372,7 @@ function startRole() {
   if (S.role === 'rider') {
     ensureWallet();
     listen(roleUnsubs, query(collection(db, 'orders'), where('estado', '==', 'abierto')), onOpenOrders);
-    listen(roleUnsubs, query(collection(db, 'orders'), where('driverId', '==', S.uid)), (snap) => { S.myOrders = orderDocs(snap); mergeOrders(); syncSheet(); render(); });
+    listen(roleUnsubs, query(collection(db, 'orders'), where('driverId', '==', S.uid)), onMyOrders);
     listen(roleUnsubs, doc(db, 'wallets', S.uid), (s) => { S.wallet = s.exists() ? s.data() : null; S.walletReady = true; if (S.online) queueOpen(); syncSheet(); render(); });
     listen(roleUnsubs, query(collection(db, 'movs'), where('driverId', '==', S.uid)), (snap) => { S.movs = snap.docs.map((d) => d.data()); render(); });
     listen(roleUnsubs, query(collection(db, 'recargas'), where('driverId', '==', S.uid)), (snap) => { S.recargas = snap.docs.map((d) => d.data()).filter((r) => r && r.id && r.estado); render(); });
@@ -390,6 +390,18 @@ async function ensureWallet() {
   } catch (e) {}
 }
 
+function onMyOrders(snap) {
+  const next = orderDocs(snap), act = (o) => o.estado === 'asignado' || o.estado === 'recogido';
+  const was = S.myOrders.filter(act), ids = new Set(next.filter(act).map((o) => o.id));
+  was.forEach((o) => {
+    if (ids.has(o.id)) return;
+    S.ignored.add(o.id);
+    const now = next.find((x) => x.id === o.id);
+    if (now && now.estado === 'cancelado') { beep([440, 330]); toast('Soporte canceló el pedido ' + folio(o.id) + '.'); }
+    else if (!now) { beep([440, 330]); toast('Soporte reasignó el pedido ' + folio(o.id) + ' a otro repartidor.'); }
+  });
+  S.myOrders = next; mergeOrders(); syncSheet(); render();
+}
 function onOpenOrders(snap) {
   const open = orderDocs(snap), fresh = [];
   open.forEach((o) => {
@@ -428,6 +440,12 @@ function startAdmin() {
   listen(unsubs, query(collection(db, 'movs'), orderBy('creadoEn', 'desc'), limit(1000)), (snap) => { S.movs = snap.docs.map((d) => d.data()); render(); });
   listen(unsubs, query(collection(db, 'presence'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = d.data(); }); S.presence = m; render(); });
   listen(unsubs, doc(db, 'config', 'pago'), (s) => { S.pago = (s.exists() && s.data().texto) || ''; render(); });
+  listen(unsubs, query(collection(db, 'incidencias'), orderBy('creadoEn', 'desc'), limit(200)), (snap) => {
+    const arr = snap.docs.map((d) => d.data()).filter((x) => x && x.id && x.tipo);
+    if (S.incReady) arr.forEach((x) => { if (x.estado === 'abierta' && !S.incMine.has(x.id)) { beep([880, 660, 880]); buzz(); toast('Incidencia de ' + (x.driverName || 'un repartidor') + ': ' + (INC_TIPOS[x.tipo] || x.tipo)); } });
+    arr.forEach((x) => S.incMine.add(x.id));
+    S.incs = arr; S.incReady = true; render();
+  });
 }
 
 /* Quién tiene la app abierta: cada teléfono avisa cada minuto. */
@@ -809,7 +827,8 @@ function tripCard(o) {
     '<div class="line"><span class="k">Recoger en</span><span class="v">' + esc(o.shop) + ' · ' + esc(o.pickup) + '</span></div>' +
     orderLines(o) +
     (o.tel ? '<div class="line"><span class="k">Teléfono del cliente</span><span class="v">' + esc(o.tel) + '</span></div>' : '') +
-    moneyRow(o) + links + '<div class="actions">' + btn + '</div></article>';
+    moneyRow(o) + links + '<div class="actions">' + btn + '</div>' +
+    '<button class="btn ghost small block" type="button" data-act="issue" data-id="' + esc(o.id) + '">Tengo un problema</button></article>';
 }
 function renderRider() {
   const open = S.orders.filter((o) => o.estado === 'abierto').sort((a, b) => b.creadoEn - a.creadoEn);
@@ -1005,6 +1024,8 @@ function renderAdmin() {
   $('#adminSearch').hidden = S.tab !== 'recargas'; $('#adminAjustes').hidden = S.tab !== 'ajustes';
   $('#adminMonitor').hidden = S.tab !== 'monitor';
   $('#adminAltas').hidden = S.tab !== 'altas';
+  const ic = incDiv(); ic.hidden = S.tab !== 'incidencias';
+  if (S.tab === 'incidencias') renderIncid(ic);
   if (S.tab === 'monitor') renderMonitor();
   if (S.tab === 'altas') renderAltas();
   if (S.tab === 'ajustes' && !S.pagoDirty && document.activeElement !== $('#a-pago')) $('#a-pago').value = S.pago;
@@ -1038,6 +1059,7 @@ function renderAdmin() {
     { id: 'monitor', label: 'En vivo', badge: S.orders.filter((o) => o.estado === 'abierto').length },
     { id: 'altas', label: 'Altas', badge: S.users.filter((u) => personStatus(u, S.aprobs[u.id]) === 'revision').length },
     { id: 'recargas', label: 'Recargas', badge: pend.length },
+    { id: 'incidencias', label: 'Incidencias', badge: S.incs.filter((x) => x.estado === 'abierta').length },
     { id: 'saldos', label: 'Saldos' },
     { id: 'ajustes', label: 'Depósito' }
   ];
@@ -1174,6 +1196,10 @@ document.addEventListener('click', (e) => {
   else if (act === 'zoom') openZoom(b.getAttribute('src'));
   else if (act === 'picked') picked(id);
   else if (act === 'delivered') askCode(id);
+  else if (act === 'issue') askIssue(id);
+  else if (act === 'inc-ok') incDone(id);
+  else if (act === 'inc-reopen') incReopen(id, b.getAttribute('data-oid'));
+  else if (act === 'inc-cancel') incCancel(id, b.getAttribute('data-oid'));
   else if (act === 'online') {
     S.online = !S.online;
     if (S.online) { ensureAudio(); beep([784]); queueOpen(); holdWake(); } else { S.queue = []; releaseWake(); }
@@ -1323,3 +1349,97 @@ document.addEventListener('scroll', (e) => {
   st.textContent = '.reg{max-height:300px;overflow-y:auto;border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 0;background:var(--surface);color:var(--ink);font-size:14px;line-height:1.45;-webkit-overflow-scrolling:touch}.reg p{margin:0 0 6px}.reg hr{border:0;border-top:1px solid var(--line);margin:12px 0}';
   document.head.appendChild(st);
 })();
+
+
+/* ---------- soporte e incidencias ---------- */
+const SUPPORT_TEL = '8139585921';
+const INC_TIPOS = { accidente: 'Tuve un accidente', danado: 'Se dañó o se cayó el pedido', moto: 'Falla de la moto', llegar: 'No puedo llegar', otro: 'Otro problema' };
+function supportUrl(msg) { return waUrl(SUPPORT_TEL) + '?text=' + encodeURIComponent(msg); }
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '#issueModal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;z-index:9999;padding:12px}' +
+    '#issueModal .box{background:var(--surface);color:var(--ink);border-radius:16px;padding:18px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto}' +
+    '#issueModal h3{margin:0 0 8px}#issueModal .opt{display:block;width:100%;text-align:left;margin:6px 0;padding:12px;border:2px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font-size:16px}' +
+    '#issueModal .opt.on{border-color:#1a73e8;font-weight:700}#issueModal textarea{width:100%;box-sizing:border-box;min-height:70px;margin:8px 0;padding:10px;border:2px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font-size:16px}' +
+    '#issueModal .btn{width:100%;margin-top:8px;display:block;text-align:center;box-sizing:border-box}#issueModal .sos{background:#d33;color:#fff;font-size:20px;padding:16px}' +
+    '.inc-note{margin:6px 0;font-size:14px}';
+  document.head.appendChild(st);
+})();
+function closeIssue() { const m = document.getElementById('issueModal'); if (m) m.remove(); }
+function askIssue(id) {
+  const o = byId(id);
+  if (!canAct() || !o || o.driverId !== S.uid || document.getElementById('issueModal')) return;
+  let tipo = '';
+  const m = document.createElement('div'); m.id = 'issueModal';
+  document.body.appendChild(m);
+  const draw = (sent) => {
+    const keep = m.querySelector('textarea') ? m.querySelector('textarea').value : '';
+    if (sent) {
+      const msg = 'Hola, soy ' + (S.name || 'repartidor') + ' de Gasca. Pedido ' + folio(id) + ': ' + INC_TIPOS[tipo] + '.' + (sent.nota ? ' ' + sent.nota : '');
+      m.innerHTML = '<div class="box"><h3>Listo, avisamos a soporte</h3><p>Tu reporte quedó registrado. Para que te atiendan más rápido, escríbenos por WhatsApp.</p>' +
+        '<a class="btn primary" target="_blank" rel="noopener" href="' + esc(supportUrl(msg)) + '">Escribir a soporte por WhatsApp</a>' +
+        (tipo === 'accidente' ? '<a class="btn sos" href="tel:911">Llamar al 911</a>' : '') +
+        '<button class="btn ghost" type="button" id="issueClose">Cerrar</button></div>';
+      document.getElementById('issueClose').addEventListener('click', closeIssue);
+      return;
+    }
+    m.innerHTML = '<div class="box"><h3>¿Qué pasó?</h3>' +
+      (tipo === 'accidente' ? '<a class="btn sos" href="tel:911">Llamar al 911</a><p class="inc-note">Si hay heridos, llama primero. Después avísanos aquí.</p>' : '') +
+      Object.keys(INC_TIPOS).map((k) => '<button type="button" class="opt' + (tipo === k ? ' on' : '') + '" data-k="' + k + '">' + esc(INC_TIPOS[k]) + '</button>').join('') +
+      '<textarea id="issueNote" maxlength="300" placeholder="Cuéntanos qué pasó (opcional)">' + esc(keep) + '</textarea>' +
+      '<div class="err inc-note" id="issueErr"></div>' +
+      '<button class="btn primary" type="button" id="issueSend"' + (tipo ? '' : ' disabled') + '>Avisar a soporte</button>' +
+      '<a class="btn ghost" target="_blank" rel="noopener" href="' + esc(supportUrl('Hola, soy ' + (S.name || 'repartidor') + ' de Gasca. Necesito ayuda con el pedido ' + folio(id) + '.')) + '">Hablar con soporte por WhatsApp</a>' +
+      '<button class="btn ghost" type="button" id="issueClose">Cancelar</button></div>';
+    m.querySelectorAll('.opt').forEach((b) => b.addEventListener('click', () => { tipo = b.getAttribute('data-k'); draw(); }));
+    document.getElementById('issueClose').addEventListener('click', closeIssue);
+    document.getElementById('issueSend').addEventListener('click', async () => {
+      const btn = document.getElementById('issueSend'); btn.disabled = true;
+      const nota = document.getElementById('issueNote').value.trim().slice(0, 300), iid = newId();
+      try {
+        await setDoc(doc(db, 'incidencias', iid), { id: iid, orderId: id, driverId: S.uid, driverName: S.name || 'Repartidor', shop: o.shop || '', folio: folio(id), tipo, nota, estado: 'abierta', creadoEn: Date.now() });
+        draw({ nota });
+      } catch (e) { const er = document.getElementById('issueErr'); if (er) er.textContent = 'No se pudo enviar. Escríbenos por WhatsApp.'; btn.disabled = false; }
+    });
+  };
+  draw();
+}
+function incDiv() {
+  let el = document.getElementById('adminIncid');
+  if (!el) { el = document.createElement('div'); el.id = 'adminIncid'; el.className = 'stack'; el.hidden = true; const ref = document.getElementById('adminSaldos'); ref.parentNode.insertBefore(el, ref.nextSibling); }
+  return el;
+}
+function renderIncid(el) {
+  const list = S.incs.slice().sort((a, b) => (a.estado === b.estado ? b.creadoEn - a.creadoEn : (a.estado === 'abierta' ? -1 : 1)));
+  let h = '<h2 class="section">Incidencias</h2>';
+  if (!list.length) { el.innerHTML = h + emptyBox('Sin incidencias', 'Cuando un repartidor reporte un problema en un pedido, aparece aquí.'); return; }
+  h += list.map((x) => {
+    const o = byId(x.orderId), open = x.estado === 'abierta', busy = S.busy.has('in' + x.id);
+    const live = o && (o.estado === 'asignado' || o.estado === 'recogido');
+    const wa = supportUrl('').split('?')[0];
+    return '<article class="order"><div class="head"><span class="folio">' + esc(x.driverName || 'Repartidor') + '</span><span class="chip ' + (open ? 'abierto' : 'entregado') + '">' + (open ? 'Sin atender' : 'Atendida') + '</span><span class="ago">' + ago(x.creadoEn) + '</span></div>' +
+      '<div class="line"><span class="k">Problema</span><span class="v"><b>' + esc(INC_TIPOS[x.tipo] || x.tipo) + '</b></span></div>' +
+      (x.nota ? '<div class="line"><span class="k">Nota</span><span class="v">' + esc(x.nota) + '</span></div>' : '') +
+      '<div class="line"><span class="k">Pedido</span><span class="v">' + esc(x.folio || '') + ' · ' + esc(x.shop || '') + (o ? ' · ' + esc(LABEL[o.estado] || o.estado) + ' · ' + esc(o.dest) : '') + '</span></div>' +
+      (open ? '<div class="actions">' +
+        (live ? '<button class="btn ghost small" type="button" data-act="inc-reopen" data-id="' + esc(x.id) + '" data-oid="' + esc(x.orderId) + '"' + (busy ? ' disabled' : '') + '>Reasignar pedido</button>' +
+          '<button class="btn danger small" type="button" data-act="inc-cancel" data-id="' + esc(x.id) + '" data-oid="' + esc(x.orderId) + '"' + (busy ? ' disabled' : '') + '>Cancelar pedido</button>' : '') +
+        '<button class="btn primary small" type="button" data-act="inc-ok" data-id="' + esc(x.id) + '"' + (busy ? ' disabled' : '') + '>Marcar atendida</button></div>' : '') + '</article>';
+  }).join('');
+  el.innerHTML = h;
+}
+async function incAct(id, fn, okMsg) {
+  if (!S.isAdmin || S.busy.has('in' + id)) return;
+  S.busy.add('in' + id); render();
+  try { await fn(); toast(okMsg); } catch (e) { toast('No se pudo. Intenta de nuevo.'); }
+  S.busy.delete('in' + id); render();
+}
+const incDone = (id) => incAct(id, () => updateDoc(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: Date.now() }), 'Incidencia atendida.');
+const incReopen = (id, oid) => incAct(id, async () => {
+  await updateDoc(doc(db, 'orders', oid), { estado: 'abierto', driverId: '', driverName: '', asignadoEn: null, recogidoEn: null });
+  await updateDoc(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: Date.now(), accion: 'reasignado' });
+}, 'Pedido liberado para otro repartidor.');
+const incCancel = (id, oid) => incAct(id, async () => {
+  await updateDoc(doc(db, 'orders', oid), { estado: 'cancelado', canceladoEn: Date.now() });
+  await updateDoc(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: Date.now(), accion: 'cancelado' });
+}, 'Pedido cancelado.');
