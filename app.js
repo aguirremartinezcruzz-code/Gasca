@@ -75,7 +75,7 @@ function resetData() {
 function clearDom() {
   ['#viewVerify', '#shopList', '#riderHead', '#riderAvail', '#riderTrips', '#walletTop', '#walletList', '#adminMonitor', '#adminAltas', '#adminRecargas', '#adminSaldos', '#adminIncid', '#sheet']
     .forEach((s) => { const el = $(s); if (el) el.innerHTML = ''; });
-  ['#o-pick', '#o-cliente', '#o-tel', '#o-dest', '#o-desc', '#o-cobro', '#o-tarifa', '#r-monto', '#a-pago', '#a-buscar']
+  ['#o-pick', '#o-cliente', '#o-tel', '#o-dest', '#o-calle', '#o-num', '#o-int', '#o-col', '#o-ref', '#o-desc', '#o-cobro', '#o-tarifa', '#r-monto', '#a-pago', '#a-buscar']
     .forEach((s) => { const el = $(s); if (el) el.value = ''; });
 }
 
@@ -128,7 +128,7 @@ function ago(t) {
 }
 const isToday = (t) => new Date(t).toDateString() === new Date().toDateString();
 const mine = () => S.orders.filter((o) => o.driverId === S.uid);
-const mapsUrl = (a) => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(a);
+const mapsUrl = (a) => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(String(a || '').split(' — ')[0]);
 function waUrl(tel) {
   let d = String(tel || '').replace(/\D/g, ''); if (!d) return '';
   if (d.length === 10) d = '52' + d;
@@ -1113,12 +1113,13 @@ $('#orderForm').addEventListener('submit', async (e) => {
   const cobro = Math.round((Number($('#o-cobro').value) || 0) * 100) / 100;
   const o = {
     shopId: S.uid, shop: S.name, pickup: $('#o-pick').value.trim(), cliente: $('#o-cliente').value.trim(), tel: $('#o-tel').value.trim(),
-    dest: $('#o-dest').value.trim(), desc: $('#o-desc').value.trim(), cobro, tarifa
+    dest: buildDest(), desc: $('#o-desc').value.trim(), cobro, tarifa
   };
   try {
     if (tarifa < 1 || tarifa > 2000) throw new Error('tarifa');
     const id = await createOrder(o);
-    ['o-cliente', 'o-tel', 'o-dest', 'o-desc', 'o-cobro'].forEach((i) => { $('#' + i).value = ''; });
+    ['o-cliente', 'o-tel', 'o-dest', 'o-calle', 'o-num', 'o-int', 'o-col', 'o-ref', 'o-desc', 'o-cobro'].forEach((i) => { $('#' + i).value = ''; });
+    saveCity();
     S.tab = 'pedidos';
     toast('Pedido ' + folio(id) + ' enviado a los repartidores.');
   } catch (err) {
@@ -1450,4 +1451,31 @@ const incCancel = (id, oid) => incAct(id, async () => {
   st.textContent = '.tabs-in[data-n="6"]{display:flex;overflow-x:auto;gap:6px;scrollbar-width:none}.tabs-in[data-n="6"]::-webkit-scrollbar{display:none}' +
     '.tabs-in[data-n="6"] .tab{flex:0 0 auto;white-space:nowrap;padding-inline:14px;font-size:14px}';
   document.head.appendChild(st);
+})();
+
+
+/* ---------- dirección de entrega por campos (para que Google Maps la encuentre bien) ---------- */
+const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const val = (id) => ($('#' + id).value || '').replace(/\s+/g, ' ').trim();
+function buildDest() {
+  let d = val('o-calle') + ' ' + val('o-num') + (val('o-int') ? ' Int. ' + val('o-int') : '') + ', Col. ' + val('o-col') + ', ' + val('o-ciudad') + ', ' + val('o-mun');
+  const ref = val('o-ref');
+  if (ref) { const room = 220 - d.length - 8; if (room > 0) d += ' — Ref: ' + ref.slice(0, room); }
+  return d.slice(0, 220);
+}
+function saveCity() { lsSet('gasca_ciudad', val('o-ciudad')); lsSet('gasca_mun', val('o-mun')); }
+(function () {
+  const old = document.getElementById('o-dest'); if (!old) return;
+  const box = old.closest('.field'); old.required = false; box.hidden = true;
+  const f = (id, label, ph, max, req, extra) => '<div class="field"' + (extra || '') + '><label for="' + id + '">' + label + (req ? '' : ' (opcional)') + '</label><input id="' + id + '" type="text" maxlength="' + max + '"' + (req ? ' required' : '') + ' placeholder="' + ph + '"></div>';
+  box.insertAdjacentHTML('beforebegin',
+    '<div class="field"><label>Dirección de entrega</label></div>' +
+    f('o-calle', 'Calle', 'Ej. Av. Insurgentes', 60, true) +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' + f('o-num', 'Número exterior', 'Ej. 100', 10, true) + f('o-int', 'Interior', 'Ej. 4B', 10, false) + '</div>' +
+    f('o-col', 'Colonia', 'Ej. Condesa', 50, true) +
+    f('o-ciudad', 'Ciudad', 'Ej. Tepic', 40, true) +
+    f('o-mun', 'Municipio', 'Ej. Tepic', 40, true) +
+    f('o-ref', 'Referencias', 'Ej. Casa azul, entre calle X y Y', 60, false));
+  $('#o-ciudad').value = lsGet('gasca_ciudad'); $('#o-mun').value = lsGet('gasca_mun');
 })();
