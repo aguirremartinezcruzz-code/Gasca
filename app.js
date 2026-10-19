@@ -155,10 +155,12 @@ const canTake = (o) => S.walletReady && !!S.wallet && saldoC() >= comC(o);
 /* ---------- verificación de documentos ---------- */
 const VER = {
   rider: [
-    { k: 'ine', t: 'INE', h: 'Foto de tu INE por el frente. Que se vean tu foto y tus datos completos.' },
+    { k: 'ine', t: 'INE por el frente', h: 'Foto de tu INE por el frente. Que se vean tu foto y tus datos completos.' },
+    { k: 'ine_atras', t: 'INE por atrás', h: 'Foto de tu INE por la parte de atrás. Que se lea todo.' },
     { k: 'licencia', t: 'Licencia de conducir', h: 'Por el frente, vigente y legible.' },
-    { k: 'moto', t: 'Foto de la moto completa', h: 'Toda la moto de lado, de la llanta de adelante a la de atrás.' },
-    { k: 'placa', t: 'Moto completa con la placa', h: 'Toda la moto vista por detrás, con la placa legible.' }
+    { k: 'tarjeta', t: 'Tarjeta de circulación', h: 'Foto de la tarjeta de circulación de tu moto. Que se lea completa.' },
+    { k: 'moto', t: 'Foto de la moto', h: 'Toda la moto de lado, de la llanta de adelante a la de atrás.' },
+    { k: 'placa', t: 'Placa de la moto', h: 'La moto vista por detrás, con la placa bien legible.' }
   ],
   shop: [
     { k: 'ine', t: 'INE del dueño o encargado', h: 'Foto de la INE por el frente. Que se vean la foto y los datos completos.' },
@@ -718,7 +720,7 @@ function renderVerify() {
     return;
   }
   const a = S.myAprob;
-  let h = headH + '<p class="lede">' + (S.role === 'rider' ? 'Para recibir pedidos necesitamos 4 fotos. Solo sirven para confirmar quién eres.' : 'Para pedir motos necesitamos 3 fotos. Solo sirven para confirmar tu negocio.') + '</p>';
+  let h = headH + '<p class="lede">' + (S.role === 'rider' ? 'Para recibir pedidos necesitamos 6 fotos. Solo sirven para confirmar quién eres.' : 'Para pedir motos necesitamos 3 fotos. Solo sirven para confirmar tu negocio.') + '</p>';
   if (st === 'rechazado') h += '<div class="banner"><b>No se aprobaron tus documentos.</b> ' + esc(a && a.motivo ? a.motivo : 'Revisa las fotos y súbelas de nuevo.') + '</div>';
   let ready = 0;
   slots.forEach((s) => {
