@@ -1073,6 +1073,7 @@ function renderTabs(tabs) {
   $('#tabsIn').innerHTML = tabs.map((t) =>
     '<button type="button" role="tab" class="tab" data-act="tab" data-tab="' + t.id + '" aria-selected="' + (S.tab === t.id) + '">' + esc(t.label) +
     (t.badge ? '<span class="badge">' + t.badge + '</span>' : '') + '</button>').join('');
+  try { const on = $('#tabsIn').querySelector('[aria-selected="true"]'); if (on && on.scrollIntoView) on.scrollIntoView({ inline: 'nearest', block: 'nearest' }); } catch (e) {}
 }
 
 function render() {
@@ -1443,3 +1444,10 @@ const incCancel = (id, oid) => incAct(id, async () => {
   await updateDoc(doc(db, 'orders', oid), { estado: 'cancelado', canceladoEn: Date.now() });
   await updateDoc(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: Date.now(), accion: 'cancelado' });
 }, 'Pedido cancelado.');
+
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '.tabs-in[data-n="6"]{display:flex;overflow-x:auto;gap:6px;scrollbar-width:none}.tabs-in[data-n="6"]::-webkit-scrollbar{display:none}' +
+    '.tabs-in[data-n="6"] .tab{flex:0 0 auto;white-space:nowrap;padding-inline:14px;font-size:14px}';
+  document.head.appendChild(st);
+})();
