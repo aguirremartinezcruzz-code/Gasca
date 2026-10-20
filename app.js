@@ -468,6 +468,7 @@ async function createOrder(o) {
 
 async function accept(id) {
   if (!canAct() || S.busy.has(id) || view() !== 'rider') return;
+  if (!S.online) { toast('Conéctate para aceptar pedidos.'); return; }
   const oo = byId(id);
   if (oo && !canTake(oo)) { toast('Tu saldo no alcanza. Recarga para aceptar pedidos.'); S.tab = 'saldo'; render(); return; }
   S.busy.add(id); renderSheet(true); render();
@@ -803,6 +804,7 @@ function renderShop() {
 
 function acceptBtn(o, busy) {
   if (!S.walletReady || !S.wallet) return '<button class="btn ghost" type="button" disabled>Cargando saldo…</button>';
+  if (!S.online) return '<button class="btn ghost" type="button" data-act="online">Conéctate para aceptar pedidos</button>';
   if (!canTake(o)) return '<button class="btn ghost" type="button" data-act="tab" data-tab="saldo">Saldo insuficiente · Recargar</button>';
   return '<button class="btn primary" type="button" data-act="accept" data-id="' + esc(o.id) + '"' + (busy || !canAct() ? ' disabled' : '') + '>' + (busy ? 'Aceptando…' : 'Aceptar pedido') + '</button>';
 }
