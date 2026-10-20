@@ -75,7 +75,7 @@ function resetData() {
 function clearDom() {
   ['#viewVerify', '#shopList', '#riderHead', '#riderAvail', '#riderTrips', '#walletTop', '#walletList', '#adminMonitor', '#adminAltas', '#adminRecargas', '#adminSaldos', '#adminIncid', '#sheet']
     .forEach((s) => { const el = $(s); if (el) el.innerHTML = ''; });
-  ['#o-pick', '#o-cliente', '#o-tel', '#o-dest', '#o-calle', '#o-num', '#o-int', '#o-col', '#o-ref', '#o-desc', '#o-cobro', '#o-tarifa', '#r-monto', '#a-pago', '#a-buscar']
+  ['#o-pick', '#p-calle', '#p-col', '#p-ciudad', '#p-mun', '#o-cliente', '#o-tel', '#o-dest', '#o-calle', '#o-num', '#o-int', '#o-col', '#o-ref', '#o-desc', '#o-cobro', '#o-tarifa', '#r-monto', '#a-pago', '#a-buscar']
     .forEach((s) => { const el = $(s); if (el) el.value = ''; });
 }
 
@@ -854,7 +854,10 @@ function renderShop() {
     else if (!list.length) el.innerHTML = emptyBox('Aún no hay pedidos', 'Cuando pidas una moto, aquí ves quién la tomó y en qué va.');
     else el.innerHTML = '<h2 class="section">Mis pedidos</h2><div class="list">' + list.slice(0, 40).map(shopCard).join('') + '</div>';
   }
-  if (!$('#o-pick').value && S.addr && document.activeElement !== $('#o-pick')) $('#o-pick').value = S.addr;
+  { const cli = isCli(S.profile), pk = $('#o-pick'), box = pk.closest('.field'), pf = $('#pickFields');
+    if (box) box.hidden = cli; pk.required = !cli;
+    if (pf) { pf.hidden = !cli; ['p-calle', 'p-col', 'p-ciudad', 'p-mun'].forEach((i) => { $('#' + i).required = cli; }); } }
+  if (!isCli(S.profile) && !$('#o-pick').value && S.addr && document.activeElement !== $('#o-pick')) $('#o-pick').value = S.addr;
   return [{ id: 'nuevo', label: 'Nuevo pedido' }, { id: 'pedidos', label: 'Mis pedidos', badge: active.length }];
 }
 
@@ -1170,13 +1173,14 @@ $('#orderForm').addEventListener('submit', async (e) => {
   const tarifa = Math.round(Number($('#o-tarifa').value) || 0);
   const cobro = Math.round((Number($('#o-cobro').value) || 0) * 100) / 100;
   const o = {
-    shopId: S.uid, shop: S.name, pickup: $('#o-pick').value.trim(), cliente: $('#o-cliente').value.trim(), tel: $('#o-tel').value.trim(),
+    shopId: S.uid, shop: S.name, pickup: isCli(S.profile) ? buildPick() : $('#o-pick').value.trim(), cliente: $('#o-cliente').value.trim(), tel: $('#o-tel').value.trim(),
     dest: buildDest(), desc: $('#o-desc').value.trim(), cobro, tarifa
   };
   try {
     if (tarifa < 1 || tarifa > 2000) throw new Error('tarifa');
     const id = await createOrder(o);
     ['o-cliente', 'o-tel', 'o-dest', 'o-calle', 'o-num', 'o-int', 'o-col', 'o-ref', 'o-desc', 'o-cobro'].forEach((i) => { $('#' + i).value = ''; });
+    ['p-calle', 'p-col'].forEach((i) => { $('#' + i).value = ''; });
     saveCity();
     S.tab = 'pedidos';
     toast('Pedido ' + folio(id) + ' enviado a los repartidores.');
@@ -1522,7 +1526,15 @@ function buildDest() {
   if (ref) { const room = 220 - d.length - 8; if (room > 0) d += ' — Ref: ' + ref.slice(0, room); }
   return d.slice(0, 220);
 }
-function saveCity() { lsSet('gasca_ciudad', val('o-ciudad')); lsSet('gasca_mun', val('o-mun')); }
+function buildPick() { return (val('p-calle') + ', Col. ' + val('p-col') + ', ' + val('p-ciudad') + ', ' + val('p-mun')).slice(0, 160); }
+function saveCity() { lsSet('gasca_ciudad', val('o-ciudad')); lsSet('gasca_mun', val('o-mun')); if (val('p-ciudad')) lsSet('gasca_pciudad', val('p-ciudad')); if (val('p-mun')) lsSet('gasca_pmun', val('p-mun')); }
+(function () {
+  const pk = document.getElementById('o-pick'); if (!pk) return;
+  const f = (id, label, ph, max) => '<div class="field"><label for="' + id + '">' + label + '</label><input id="' + id + '" type="text" maxlength="' + max + '" placeholder="' + ph + '"></div>';
+  pk.closest('.field').insertAdjacentHTML('afterend', '<div id="pickFields" hidden><div class="field"><label>Dirección de recogida</label></div>' +
+    f('p-calle', 'Calle y número', 'Ej. Av. Insurgentes 100', 70) + f('p-col', 'Colonia', 'Ej. Condesa', 50) + f('p-ciudad', 'Ciudad', 'Ej. Tepic', 40) + f('p-mun', 'Municipio', 'Ej. Tepic', 40) + '</div>');
+  $('#p-ciudad').value = lsGet('gasca_pciudad') || lsGet('gasca_ciudad'); $('#p-mun').value = lsGet('gasca_pmun') || lsGet('gasca_mun');
+})();
 (function () {
   const old = document.getElementById('o-dest'); if (!old) return;
   const box = old.closest('.field'); old.required = false; box.hidden = true;
