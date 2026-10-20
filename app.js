@@ -1738,3 +1738,4 @@ function cliSum() {
   st.textContent = '.sumbox{margin:14px 0;padding:14px;border:2px dashed var(--line);border-radius:14px;background:var(--surface);line-height:1.5}.paynote{margin:10px 0;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--accent) 16%,var(--surface));line-height:1.45;font-size:15px}';
   document.head.appendChild(st);
 })();
+(function () { const h = document.querySelector('#shopNew h2.section'); if (h) h.textContent = 'Generar pedido'; })();
