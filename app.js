@@ -61,7 +61,7 @@ function resetData() {
   Object.assign(S, {
     profile: null, profileReady: false, role: null, name: '', addr: '', myAprob: null, aprReady: false, fotos: {},
     consent: false, verEdit: false, uploading: {}, perm: false, dbErr: false, tab: '',
-    incs: [], incReady: false, ofertas: [], ofKnown: null, incMine: new Set(), regRead: false, regOk: false, regTop: 0, codes: {}, orders: [], openOrders: [], myOrders: [], known: new Set(), openReady: false, prev: new Map(),
+    incs: [], incReady: false, ofertas: [], ofKnown: null, minOffer: 0, incMine: new Set(), regRead: false, regOk: false, regTop: 0, codes: {}, orders: [], openOrders: [], myOrders: [], known: new Set(), openReady: false, prev: new Map(),
     wallet: null, walletReady: false, movs: [], recargas: [], pago: '', pagoDirty: false,
     users: [], aprobs: {}, wallets: {}, presence: {}, review: null, revPhotos: null, suspId: null, motivo: '',
     online: false, queue: [], ignored: new Set(), sheetId: null, sheetTaken: null, sheetKey: '',
@@ -402,7 +402,7 @@ function syncRole() {
 function mergeOrders() {
   if (S.role === 'rider') {
     const m = new Map();
-    S.openOrders.forEach((o) => m.set(o.id, o));
+    S.openOrders.filter(liveR).forEach((o) => m.set(o.id, o));
     S.myOrders.forEach((o) => m.set(o.id, o));
     S.orders = Array.from(m.values());
   } else { S.orders = S.myOrders; }
@@ -453,6 +453,55 @@ function onOfertas(snap) {
   if (S.ofKnown && S.role !== 'rider') next.forEach((x) => { if (x.estado === 'pendiente' && !S.ofKnown.has(x.id)) { beep([660, 880]); toast((x.driverName || 'Un repartidor') + ' pide ' + pesos(x.monto) + ' por tu pedido.'); } });
   S.ofKnown = new Set(next.map((x) => x.id)); S.ofertas = next; render();
 }
+const expMs = () => Number(lsGet('gasca_exp')) || 25000;
+const isP = (o) => !!pdesc(o).tipo;
+const liveR = (o) => !isP(o) || o.estado !== 'abierto' || Date.now() - (o.creadoEn || 0) < expMs() + 5000;
+function deadline(o) { let t = o.creadoEn || 0; S.ofertas.forEach((x) => { if (x.orderId === o.id && x.estado === 'pendiente') t = Math.max(t, x.creadoEn || 0); }); return t + expMs(); }
+const expiring = new Set();
+const DRAFT_IDS = ['p-calle', 'p-col', 'p-ciudad', 'p-mun', 'o-cliente', 'o-tel', 'o-calle', 'o-num', 'o-int', 'o-col', 'o-ciudad', 'o-mun', 'o-ref', 'o-desc', 'o-prod', 'o-tarifa'];
+function saveDraft(orderId) {
+  const v = {}; DRAFT_IDS.forEach((i) => { v[i] = ($('#' + i) || {}).value || ''; });
+  const r = (n) => (document.querySelector('input[name=' + n + ']:checked') || {}).value || '';
+  lsSet('gasca_draft', JSON.stringify({ orderId, v, tipo: r('ctipo'), quien: r('cquien') }));
+}
+function restoreDraft(o) {
+  let d = {}; try { d = JSON.parse(lsGet('gasca_draft') || '{}'); } catch (e) {}
+  if (d.orderId === o.id && d.v) {
+    DRAFT_IDS.forEach((i) => { const el = $('#' + i); if (el && d.v[i] != null) el.value = d.v[i]; });
+    ['ctipo:' + d.tipo, 'cquien:' + d.quien].forEach((x) => { const [n, v] = x.split(':'); const el = document.querySelector('input[name=' + n + '][value="' + v + '"]'); if (el) el.checked = true; });
+  }
+  S.minOffer = Number(o.tarifa) || 0;
+  $('#o-tarifa').value = S.minOffer;
+  S.tab = 'nuevo'; cliSum(); beep([440, 330]);
+  toast('Nadie tomó tu oferta de ' + pesos(S.minOffer) + '. Súbela o déjala igual y vuelve a pedir.');
+  render();
+}
+async function expire(o) {
+  if (expiring.has(o.id)) return;
+  expiring.add(o.id);
+  try {
+    let ok = false;
+    await runTransaction(db, async (tx) => {
+      const ref = doc(db, 'orders', o.id), sn = await tx.get(ref);
+      if (!sn.exists() || sn.data().estado !== 'abierto') return;
+      tx.update(ref, { estado: 'cancelado', canceladoEn: Date.now() }); ok = true;
+    });
+    if (ok) restoreDraft(o);
+  } catch (e) { expiring.delete(o.id); }
+}
+function checkExpiry() {
+  if (S.role !== 'shop' || !isCli(S.profile) || !S.openReady) return;
+  S.orders.forEach((o) => { if (o.estado === 'abierto' && isP(o) && Date.now() > deadline(o)) expire(o); });
+}
+function cdNote(o) {
+  if (o.estado !== 'abierto' || !isP(o)) return '';
+  return '<p class="paynote">Tiempo para que alguien la tome: <b data-dl="' + deadline(o) + '">' + Math.max(0, Math.ceil((deadline(o) - Date.now()) / 1000)) + '</b> s</p>';
+}
+setInterval(() => {
+  if (!S.user || !S.roleOn) return;
+  if (S.role === 'rider') { const n = S.orders.length; mergeOrders(); if (S.orders.length !== n) { syncSheet(); render(); } }
+  else { checkExpiry(); document.querySelectorAll('[data-dl]').forEach((el) => { el.textContent = Math.max(0, Math.ceil((Number(el.getAttribute('data-dl')) - Date.now()) / 1000)); }); }
+}, 1000);
 const myOferta = (oid) => S.ofertas.find((x) => x.id === oid + '_' + S.uid);
 async function counter(id, m) {
   const o = byId(id);
@@ -563,6 +612,8 @@ async function createOrder(o) {
 async function accept(id) {
   if (!canAct() || S.busy.has(id) || view() !== 'rider') return;
   if (!S.online) { toast('Conéctate para aceptar pedidos.'); return; }
+  const raw = S.openOrders.find((x) => x.id === id);
+  if (raw && !liveR(raw)) { toast('Ese pedido ya venció.'); return; }
   const oo = byId(id);
   if (oo && !canTake(oo)) { toast('Tu saldo no alcanza. Recarga para aceptar pedidos.'); S.tab = 'saldo'; render(); return; }
   S.busy.add(id); renderSheet(true); render();
@@ -923,7 +974,7 @@ function shopCard(o) {
       ? '<div class="actions"><button class="btn ghost small" type="button" data-act="cancel-no">Conservar</button><button class="btn danger small" type="button" data-act="cancel-yes" data-id="' + esc(o.id) + '">Sí, cancelar</button></div>'
       : '<div class="actions"><button class="btn ghost small" type="button" data-act="cancel" data-id="' + esc(o.id) + '"' + (S.busy.has(o.id) ? ' disabled' : '') + '>Cancelar pedido</button></div>';
   }
-  return '<article class="order">' + head(o) + orderLines(o) + moneyRow(o) + sendNote(o) + offersFor(o) + s + act + '</article>';
+  return '<article class="order">' + head(o) + orderLines(o) + moneyRow(o) + sendNote(o) + offersFor(o) + cdNote(o) + s + act + '</article>';
 }
 function renderShop() {
   const list = S.orders;
@@ -935,6 +986,7 @@ function renderShop() {
     else if (!list.length) el.innerHTML = emptyBox('Aún no hay pedidos', 'Cuando pidas una moto, aquí ves quién la tomó y en qué va.');
     else el.innerHTML = '<h2 class="section">Mis pedidos</h2><div class="list">' + list.slice(0, 40).map(shopCard).join('') + '</div>';
   }
+  { const mn = $('#minNote'); mn.hidden = !(isCli(S.profile) && S.minOffer); mn.textContent = 'Nadie tomó tu oferta de ' + pesos(S.minOffer) + '. Pon ' + pesos(S.minOffer) + ' o más para intentar de nuevo.'; $('#o-tarifa').min = isCli(S.profile) && S.minOffer ? String(S.minOffer) : '1'; }
   { const cli = isCli(S.profile); $('#cliPay').hidden = !cli; $('#cliQuien').hidden = !cli; $('#fProd').hidden = !cli; $('#paySum').hidden = !cli; $('#o-cobro').closest('.field').hidden = cli; $('#orderForm .pair').style.gridTemplateColumns = cli ? '1fr' : '';
     $('label[for=o-tarifa]').textContent = cli ? 'Oferta por el mandadito' : 'Pago al repartidor'; $('#o-tarifa').placeholder = cli ? '$ cuánto ofreces pagar por el mandadito' : '$ envío';
     $('label[for=o-desc]').textContent = cli ? '¿Qué vas a enviar?' : 'Qué se entrega'; $('#o-desc').placeholder = cli ? 'Ej. Un martillo, zapatos escolares' : 'Ej. 2 pizzas grandes y 1 refresco'; }
@@ -1260,6 +1312,7 @@ $('#orderForm').addEventListener('submit', async (e) => {
     const tp = (document.querySelector('input[name=ctipo]:checked') || {}).value || 'e', qp = (document.querySelector('input[name=cquien]:checked') || {}).value || 'r';
     const prod = tp === 'v' ? Math.round((Number($('#o-prod').value) || 0) * 100) / 100 : 0;
     if (tp === 'v' && prod <= 0) { toast('Escribe cuánto cuesta el producto.'); btn.disabled = false; btn.textContent = 'Pedir moto'; return; }
+    if (S.minOffer && tarifa < S.minOffer) { toast('Tu oferta debe ser de ' + pesos(S.minOffer) + ' o más.'); btn.disabled = false; btn.textContent = 'Pedir moto'; return; }
     cobro = Math.round((prod + (qp === 'r' ? tarifa : 0)) * 100) / 100;
     descTxt = descTxt.slice(0, 90) + DSEP + tp + '|' + prod + '|' + qp;
   }
@@ -1270,6 +1323,7 @@ $('#orderForm').addEventListener('submit', async (e) => {
   try {
     if (tarifa < 1 || tarifa > 2000) throw new Error('tarifa');
     const id = await createOrder(o);
+    if (isCli(S.profile)) { saveDraft(id); S.minOffer = 0; }
     ['o-cliente', 'o-tel', 'o-dest', 'o-calle', 'o-num', 'o-int', 'o-col', 'o-ref', 'o-desc', 'o-cobro'].forEach((i) => { $('#' + i).value = ''; });
     ['p-calle', 'p-col', 'o-prod'].forEach((i) => { $('#' + i).value = ''; }); cliSum();
     saveCity();
@@ -1677,6 +1731,7 @@ function cliSum() {
     '<div id="cliQuien" hidden><div class="field sec-h"><label>¿Quién paga el mandadito?</label></div><div class="roles" style="grid-template-columns:1fr">' +
     card('cquien', 'e', 'Paga quien envía', 'Tú le pagas al repartidor.') + card('cquien', 'r', 'Paga quien recibe', 'Se lo cobra el repartidor al entregar.', true) + '</div></div>' +
     '<div class="field" id="fProd" hidden style="margin-top:12px"><label for="o-prod">Valor del producto</label><input id="o-prod" type="number" inputmode="decimal" min="0" step="any" placeholder="$ precio del producto"><p class="hint" style="margin:6px 0 0">Solo si hay una venta. Si es un envío sin costo, déjalo vacío.</p></div>');
+  pair.insertAdjacentHTML('beforebegin', '<p id="minNote" class="paynote" hidden></p>');
   pair.insertAdjacentHTML('afterend', '<div id="paySum" class="sumbox" hidden></div>');
   const f = $('#orderForm'); f.addEventListener('input', cliSum); f.addEventListener('change', cliSum); cliSum();
   const st = document.createElement('style');
