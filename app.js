@@ -884,8 +884,8 @@ function renderShop() {
     else if (!list.length) el.innerHTML = emptyBox('Aún no hay pedidos', 'Cuando pidas una moto, aquí ves quién la tomó y en qué va.');
     else el.innerHTML = '<h2 class="section">Mis pedidos</h2><div class="list">' + list.slice(0, 40).map(shopCard).join('') + '</div>';
   }
-  { const cli = isCli(S.profile); $('#cliPay').hidden = !cli; $('#cliQuien').hidden = !cli; $('#paySum').hidden = !cli; $('#o-cobro').closest('.field').hidden = cli; $('#orderForm .pair').style.gridTemplateColumns = cli ? '1fr' : '';
-    $('label[for=o-tarifa]').textContent = cli ? 'Costo del mandadito' : 'Pago al repartidor'; $('#o-tarifa').placeholder = cli ? '$ lo que cuesta el mandadito' : '$ envío';
+  { const cli = isCli(S.profile); $('#cliPay').hidden = !cli; $('#cliQuien').hidden = !cli; $('#fProd').hidden = !cli; $('#paySum').hidden = !cli; $('#o-cobro').closest('.field').hidden = cli; $('#orderForm .pair').style.gridTemplateColumns = cli ? '1fr' : '';
+    $('label[for=o-tarifa]').textContent = cli ? 'Oferta por el mandadito' : 'Pago al repartidor'; $('#o-tarifa').placeholder = cli ? '$ cuánto ofreces pagar por el mandadito' : '$ envío';
     $('label[for=o-desc]').textContent = cli ? '¿Qué vas a enviar?' : 'Qué se entrega'; $('#o-desc').placeholder = cli ? 'Ej. Un martillo, zapatos escolares' : 'Ej. 2 pizzas grandes y 1 refresco'; }
   { const cli = isCli(S.profile), pk = $('#o-pick'), box = pk.closest('.field'), pf = $('#pickFields');
     if (box) box.hidden = cli; pk.required = !cli;
@@ -1601,7 +1601,6 @@ function saveCity() { lsSet('gasca_ciudad', val('o-ciudad')); lsSet('gasca_mun',
 function cliSum() {
   const el = $('#paySum'); if (!el) return;
   const tp = (document.querySelector('input[name=ctipo]:checked') || {}).value || 'e', qp = (document.querySelector('input[name=cquien]:checked') || {}).value || 'r';
-  $('#fProd').hidden = tp !== 'v';
   const prod = tp === 'v' ? (Number($('#o-prod').value) || 0) : 0, T = Math.round(Number($('#o-tarifa').value) || 0);
   const f = (n) => '$' + (Math.round(n * 100) / 100);
   let h = '<b>Resumen</b>';
@@ -1620,9 +1619,10 @@ function cliSum() {
     card('ctipo', 'e', 'No, solo es un envío', 'Por ejemplo, un martillo prestado.', true) +
     card('ctipo', 'v', 'Sí, me pagan al entregar', 'El repartidor te paga el producto al recoger y lo cobra a quien recibe.') +
     card('ctipo', 'p', 'Sí, pero ya me pagaron', 'Por ejemplo, por transferencia. El repartidor no cobra el producto.') + '</div>' +
-    '<div class="field" id="fProd" hidden style="margin-top:12px"><label for="o-prod">¿Cuánto cuesta el producto?</label><input id="o-prod" type="number" inputmode="decimal" min="0" step="any" placeholder="$ precio del producto"></div></div>' +
+    '</div>' +
     '<div id="cliQuien" hidden><div class="field sec-h"><label>¿Quién paga el mandadito?</label></div><div class="roles" style="grid-template-columns:1fr">' +
-    card('cquien', 'r', 'Quien recibe', 'Se lo cobra el repartidor al entregar.', true) + card('cquien', 'e', 'Yo', 'Le pago yo al repartidor.') + '</div></div>');
+    card('cquien', 'e', 'Paga quien envía', 'Tú le pagas al repartidor.') + card('cquien', 'r', 'Paga quien recibe', 'Se lo cobra el repartidor al entregar.', true) + '</div></div>' +
+    '<div class="field" id="fProd" hidden style="margin-top:12px"><label for="o-prod">Valor del producto</label><input id="o-prod" type="number" inputmode="decimal" min="0" step="any" placeholder="$ precio del producto"><p class="hint" style="margin:6px 0 0">Solo si hay una venta. Si es un envío sin costo, déjalo vacío.</p></div>');
   pair.insertAdjacentHTML('afterend', '<div id="paySum" class="sumbox" hidden></div>');
   const f = $('#orderForm'); f.addEventListener('input', cliSum); f.addEventListener('change', cliSum); cliSum();
   const st = document.createElement('style');
