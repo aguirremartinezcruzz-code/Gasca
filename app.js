@@ -171,7 +171,7 @@ const VER = {
 const ROLE_LBL = { rider: 'Repartidor', shop: 'Tienda o restaurante' };
 const TEL_DOM = '@clientes.gasca.app';
 const isCli = (u) => !!u && u.role === 'shop' && typeof u.addr === 'string' && u.addr.indexOf('CLIENTE') === 0;
-const roleLbl = (u) => (isCli(u) ? 'Servicio de mandadito' : ROLE_LBL[u && u.role] || '');
+const roleLbl = (u) => (isCli(u) ? 'Envío personal' : ROLE_LBL[u && u.role] || '');
 const VER_CLI = [
   { k: 'local', t: 'Selfie', h: 'Una foto de tu cara, de frente y con buena luz. Sin lentes oscuros ni gorra.', selfie: true },
   { k: 'ine', t: 'INE por el frente', h: 'Foto de tu INE por el frente. Que se vean tu foto y tus datos completos.' },
@@ -1288,7 +1288,7 @@ function render() {
   if (v === 'owner') $('#ownerMail').textContent = 'Correo: ' + S.email;
   const who = $('#who');
   who.hidden = !S.user || v === 'loading';
-  if (S.user) who.textContent = v === 'admin' ? 'Dueño' : (S.name ? (isCli(S.profile) ? 'Servicio de mandadito · ' : { shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + (S.role === 'rider' && S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') + ' · ' : '') + S.name : 'Salir');
+  if (S.user) who.textContent = v === 'admin' ? 'Dueño' : (S.name ? (isCli(S.profile) ? 'Envío personal · ' : { shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + (S.role === 'rider' && S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') + ' · ' : '') + S.name : 'Salir');
   renderBanner();
   if (v !== 'rider') { S.sheetId = null; if (!$('#sheet').hidden) { $('#sheet').hidden = true; S.sheetKey = ''; } }
   let tabs = null;
