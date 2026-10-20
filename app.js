@@ -208,6 +208,9 @@ function view() {
 /* ---------- entrar y crear cuenta ---------- */
 const af = $('#authForm');
 (function injectCli() {
+  const sh = af.querySelector('input[value="shop"]');
+  if (sh) { const l = sh.closest('label'); l.querySelector('b').textContent = 'Para negocios'; l.querySelector('small').textContent = 'Soy tienda o restaurante'; }
+  const lg = af.querySelector('#authRoles .legend'); if (lg) lg.textContent = '¿Quién eres?';
   const r = af.querySelector('input[value="rider"]'); if (!r) return;
   const lab = r.closest('label'), n = lab.cloneNode(true);
   n.querySelector('input').value = 'cliente'; n.querySelector('b').textContent = 'Solicitar envío'; n.querySelector('small').textContent = 'Pido mandadito. No soy restaurante.';
