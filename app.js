@@ -413,6 +413,7 @@ const orderDocs = (snap) => snap.docs.map((d) => d.data()).filter((o) => o && o.
 function startRole() {
   S.roleOn = true;
   if (S.role === 'rider') {
+    S.online = lsGet('gasca_online_' + S.uid) !== '0'; if (S.online) { try { holdWake(); } catch (e) {} }
     ensureWallet();
     listen(roleUnsubs, query(collection(db, 'orders'), where('estado', '==', 'abierto')), onOpenOrders);
     listen(roleUnsubs, query(collection(db, 'orders'), where('driverId', '==', S.uid)), onMyOrders);
@@ -1452,7 +1453,7 @@ document.addEventListener('click', (e) => {
   else if (act === 'inc-reopen') incReopen(id, b.getAttribute('data-oid'));
   else if (act === 'inc-cancel') incCancel(id, b.getAttribute('data-oid'));
   else if (act === 'online') {
-    S.online = !S.online;
+    S.online = !S.online; lsSet('gasca_online_' + S.uid, S.online ? '1' : '0');
     if (S.online) { ensureAudio(); beep([784]); queueOpen(); holdWake(); } else { S.queue = []; releaseWake(); }
     syncSheet(); render(); pushPresence();
   }
