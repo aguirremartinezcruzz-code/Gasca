@@ -2187,5 +2187,20 @@ function delivNotice(o) {
     va.classList.toggle('wc-on', show);
     va.classList.toggle('wc-back', !off() && !WC.on && view() === 'auth' && S.authMode !== 'profile');
   }
+  // pantalla "Entrar" más amigable (solo cuando existe la bienvenida)
+  const lst = document.createElement('style');
+  lst.textContent = '#lgHero{display:none}.lg-on #lgHero{display:block}.lg-hero{background:linear-gradient(135deg,#f6b400,#ffd24d);border-radius:22px;overflow:hidden;color:#16202a;box-shadow:0 6px 18px rgba(246,180,0,.3);animation:wcin .45s ease both}.lg-hero .wc-road{margin:0;height:62px}' +
+    '.lg-on #authLinks [data-act=mode-signup],.lg-on #authLinks [data-act=mode-owner]{display:none!important}.lg-on #authLinks{display:flex!important;flex-direction:column;gap:10px;margin-top:6px}.lg-on #authLinks button{display:block;width:100%;text-align:center;text-decoration:none;font-weight:700;font-size:17px;min-height:50px;border:2px solid var(--line,#cfd6de);border-radius:16px;background:#fff;color:inherit!important}' +
+    '.lg-on #wcBack{display:block;width:100%;text-decoration:none;font-weight:700;font-size:17px;min-height:50px;border:2px solid var(--line,#cfd6de);border-radius:16px;background:#fff;margin:10px 0 0}.lg-on #authForm .field input{min-height:54px;font-size:17px}.lg-on #authBtn{min-height:56px;font-size:18px;font-weight:800}';
+  document.head.appendChild(lst);
+  const hero = document.createElement('div'); hero.id = 'lgHero';
+  hero.innerHTML = '<div class="lg-hero"><div class="wc-road"><div class="wc-ride">' + DELIV_SVG + '</div></div></div>';
+  document.getElementById('authTitle').before(hero);
+  function lgSync() {
+    const on = !off() && !WC.on && view() === 'auth' && S.authMode === 'login';
+    va.classList.toggle('lg-on', on);
+    if (on) { $('#authTitle').textContent = '¡Hola de nuevo!'; $('#authLede').textContent = 'Entra con tu correo o tu teléfono y tu contraseña.'; $('#a-pass').placeholder = 'Tu contraseña'; }
+  }
+  setInterval(lgSync, 250);
   setInterval(sync, 250);
 })();
