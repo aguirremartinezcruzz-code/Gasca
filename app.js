@@ -213,7 +213,7 @@ const af = $('#authForm');
   const lg = af.querySelector('#authRoles .legend'); if (lg) lg.textContent = '¿Quién eres?';
   const r = af.querySelector('input[value="rider"]'); if (!r) return;
   const lab = r.closest('label'), n = lab.cloneNode(true);
-  n.querySelector('input').value = 'cliente'; n.querySelector('b').textContent = 'Solicitar envío'; n.querySelector('small').textContent = 'Pido mandadito. No soy restaurante.';
+  n.querySelector('input').value = 'cliente'; n.querySelector('b').textContent = 'Para envíos personales'; n.querySelector('small').textContent = 'Quiero enviar algo';
   lab.after(n);
   const f = document.createElement('div'); f.className = 'field'; f.id = 'fTel'; f.hidden = true;
   f.innerHTML = '<label for="a-tel">Tu teléfono (10 dígitos)</label><input id="a-tel" type="tel" inputmode="numeric" maxlength="14" autocomplete="tel" placeholder="Ej. 3111234567">';
