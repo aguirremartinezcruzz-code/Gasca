@@ -2164,7 +2164,7 @@ function delivNotice(o) {
   box.innerHTML = '<div class="wc-hero"><div class="wc-road"><div class="wc-ride">' + DELIV_SVG + '</div></div><h2>¡Bienvenido a Gasca!</h2><p>Entregas certificadas</p></div>' +
     '<h3 class="wc-q">¿Cómo quieres usar Gasca?</h3>' +
     cards.map((c) => '<button type="button" class="wc-card" data-wc="' + c[0] + '"><span class="wc-ic" style="background:color-mix(in srgb,' + c[4] + ' 22%,#fff)" aria-hidden="true">' + c[1] + '</span><span><b>' + c[2] + '</b><small>' + c[3] + '</small></span><i aria-hidden="true">›</i></button>').join('') +
-    '<button type="button" class="btn ghost block wc-login" data-wc="login">Ya tengo cuenta · Entrar</button><button type="button" class="wc-admin" data-wc="owner">Administración</button>';
+    '<button type="button" class="btn ghost block wc-login" data-wc="login">Ya tengo cuenta · Entrar</button>';
   document.getElementById('authLede').after(box);
   const back = document.createElement('button'); back.type = 'button'; back.id = 'wcBack'; back.textContent = '← Volver al inicio';
   document.getElementById('authLinks').after(back);
@@ -2174,6 +2174,11 @@ function delivNotice(o) {
     if (v === 'login' || v === 'owner') setMode(v);
     else { setMode('signup'); const r = af.querySelector('input[name=role][value=' + v + ']'); if (r) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); } }
     sync(); try { window.scrollTo(0, 0); } catch (er) {}
+  });
+  const mark = document.querySelector('.top .mark');
+  if (mark) mark.addEventListener('click', () => {
+    if (view() !== 'auth' || S.user) return;
+    WC.on = false; setMode('owner'); sync(); try { window.scrollTo(0, 0); } catch (er) {}
   });
   back.addEventListener('click', () => { WC.on = true; setMode('login'); sync(); try { window.scrollTo(0, 0); } catch (er) {} });
   let hadUser = false;
