@@ -1067,7 +1067,7 @@ function tripCard(o) {
     '<button class="btn ghost small block" type="button" data-act="issue" data-id="' + esc(o.id) + '">Tengo un problema</button></article>';
 }
 function renderRider() {
-  const open = S.orders.filter((o) => o.estado === 'abierto').sort((a, b) => b.creadoEn - a.creadoEn);
+  const open = S.orders.filter((o) => o.estado === 'abierto').sort((a, b) => (a.creadoEn || 0) - (b.creadoEn || 0));
   const my = mine();
   const active = my.filter((o) => o.estado === 'asignado' || o.estado === 'recogido').sort((a, b) => (b.asignadoEn || 0) - (a.asignadoEn || 0));
   const done = my.filter((o) => o.estado === 'entregado').sort((a, b) => (b.entregadoEn || 0) - (a.entregadoEn || 0));
@@ -1078,27 +1078,32 @@ function renderRider() {
     '<button type="button" class="switch" role="switch" id="onlineSw" aria-checked="' + (S.online ? 'true' : 'false') + '" data-act="online">' +
     '<span class="track" aria-hidden="true"></span><span><strong>' + (S.online ? 'En línea' : 'Desconectado') + '</strong>' +
     '<span class="sub">' + (S.online ? 'Deja Gasca abierta y la pantalla encendida para recibir avisos.' : 'Conéctate para recibir avisos de pedidos nuevos.') + '</span></span></button>' +
-    '<div class="today"><div><b>' + (S.walletReady ? cents(saldoC()) : '…') + '</b><small>Saldo</small></div><div><b>' + doneToday.length + '</b><small>Viajes hoy</small></div><div><b>' + pesos(earned) + '</b><small>Ganado hoy</small></div></div>' +
     (S.walletReady && saldoC() < 2000 ? '<p class="warn">Saldo bajo. Recarga para seguir aceptando pedidos.</p>' : '');
 
   const av = $('#riderAvail'), tr = $('#riderTrips');
   av.hidden = S.tab !== 'disp'; tr.hidden = S.tab !== 'viajes';
+  const sm = $('#riderSum'); sm.hidden = S.tab !== 'resumen';
+  if (S.tab === 'resumen') {
+    const tot = done.reduce((a, o) => a + (Number(o.tarifa) || 0), 0), com = S.movs.filter((m) => m.tipo === 'comision').reduce((a, m) => a + Math.abs(Number(m.montoC) || 0), 0);
+    sm.innerHTML = '<h2 class="section">Mi día</h2><div class="rider-head"><div class="today"><div><b>' + (S.walletReady ? cents(saldoC()) : '…') + '</b><small>Saldo</small></div><div><b>' + doneToday.length + '</b><small>Viajes hoy</small></div><div><b>' + pesos(earned) + '</b><small>Ganado hoy</small></div></div></div>' +
+      '<div class="subhead">Acumulado</div><div class="rider-head"><div class="today"><div><b>' + done.length + '</b><small>Viajes en total</small></div><div><b>' + pesos(tot) + '</b><small>Ganado en total</small></div><div><b>' + cents(com) + '</b><small>Comisiones pagadas</small></div></div></div>';
+  }
   $('#riderWallet').hidden = S.tab !== 'saldo';
   if (S.tab === 'saldo') renderWallet();
   if (S.tab === 'disp') {
-    if (!S.openReady) av.innerHTML = emptyBox('Cargando pedidos', 'Un momento.');
-    else if (!open.length) av.innerHTML = emptyBox('Sin pedidos por ahora', S.online ? 'Cuando una tienda pida una moto, suena el aviso y aparece aquí.' : 'Conéctate arriba para que suene el aviso cuando llegue uno.');
-    else av.innerHTML = open.map(availCard).join('');
+    const rd = !S.online ? ['Estás desconectado', 'Enciende "En línea" arriba para recibir pedidos.'] : open.length ? [open.length + (open.length === 1 ? ' pedido disponible' : ' pedidos disponibles'), 'Primero el que llegó antes.'] : ['Esperando pedidos…', 'Deja Gasca abierta. Suena un aviso cuando llegue uno.'];
+    const radar = '<div class="radar' + (S.online ? ' on' : '') + (open.length ? ' mini' : '') + '"><div class="rings"><i></i><i></i><i></i><span class="sweep"></span><span class="core"><svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="23" r="4"/><circle cx="25" cy="23" r="4"/><path d="M8 23l5-9h6l3 9M19 14l-2-5h4M13 14H9"/></svg></span></div><b>' + rd[0] + '</b><small>' + rd[1] + '</small></div>';
+    av.innerHTML = !S.openReady ? emptyBox('Cargando pedidos', 'Un momento.') : radar + open.map(availCard).join('');
   }
   if (S.tab === 'viajes') {
     let h = '';
-    if (!active.length) h += emptyBox('Sin viajes en curso', 'Acepta un pedido en Disponibles y aquí ves el mapa, el teléfono y los pasos.');
+    if (!active.length) h += emptyBox('Sin viajes en curso', 'Acepta un pedido en Pedidos y aquí ves el mapa, el teléfono y los pasos.');
     else h += active.map(tripCard).join('');
     if (done.length) h += '<div class="subhead">Entregados</div>' + done.slice(0, 8).map((o) =>
       '<article class="order">' + head(o) + '<div class="line"><span class="k">Entregó en</span><span class="v">' + esc(o.dest) + '</span></div><div class="money"><div class="cash">' + esc(o.shop) + '</div><div class="cash"><b>' + pesos(o.tarifa) + '</b></div></div></article>').join('');
     tr.innerHTML = h;
   }
-  return [{ id: 'disp', label: 'Disponibles', badge: open.length }, { id: 'viajes', label: 'Mis viajes', badge: active.length }, { id: 'saldo', label: 'Saldo' }];
+  return [{ id: 'disp', label: 'Pedidos', badge: open.length }, { id: 'viajes', label: 'Mis viajes', badge: active.length }, { id: 'resumen', label: 'Mi día' }, { id: 'saldo', label: 'Saldo' }];
 }
 
 function movRow(m) {
@@ -1787,5 +1792,25 @@ function cliSum() {
   const st = document.createElement('style');
   st.textContent = '.top{flex-wrap:wrap;row-gap:10px}.who{order:3;flex:1 1 100%;max-width:100%!important;display:flex;align-items:center;gap:9px;text-align:left;white-space:normal!important;padding:8px 14px!important;border-radius:14px!important;font-size:14px;line-height:1.25}' +
     '.who::before{content:"";flex:0 0 9px;height:9px;border-radius:50%;background:var(--green,#17803F)}.who::after{content:"Salir";margin-left:auto;padding-left:10px;font-size:13px;font-weight:700;color:var(--muted);text-decoration:underline}';
+  document.head.appendChild(st);
+})();
+
+(function () {
+  const tr = document.getElementById('riderTrips'); if (!tr) return;
+  tr.insertAdjacentHTML('afterend', '<div id="riderSum" class="stack" hidden></div>');
+  const st = document.createElement('style');
+  st.textContent = '.radar{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:26px 16px 18px;margin-bottom:10px}.radar b{font-family:var(--font-display);font-size:26px;font-weight:700;margin-top:10px}.radar small{color:var(--muted);font-size:15px}' +
+    '.radar .rings{position:relative;width:180px;height:180px;display:grid;place-items:center}.radar .rings i{position:absolute;inset:0;border:3px solid var(--accent);border-radius:50%;opacity:0;transform:scale(.3)}' +
+    '.radar.on .rings i{animation:rdp 3s ease-out infinite}.radar.on .rings i:nth-child(2){animation-delay:1s}.radar.on .rings i:nth-child(3){animation-delay:2s}' +
+    '.radar .sweep{position:absolute;inset:14px;border-radius:50%;background:conic-gradient(from 0deg,transparent 0 70%,color-mix(in srgb,var(--accent) 55%,transparent) 100%);opacity:0}.radar.on .sweep{opacity:1;animation:rds 2.4s linear infinite}' +
+    '.radar .core{position:relative;width:70px;height:70px;border-radius:50%;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;box-shadow:0 4px 14px rgba(0,0,0,.18)}.radar:not(.on) .core{background:var(--surface2);color:var(--muted);box-shadow:none}' +
+    '.radar.mini{padding:12px 16px 8px}.radar.mini .rings{width:110px;height:110px}.radar.mini .core{width:48px;height:48px}.radar.mini .core svg{width:22px;height:22px}.radar.mini b{font-size:22px;margin-top:4px}' +
+    '@keyframes rdp{0%{transform:scale(.3);opacity:.9}100%{transform:scale(1.15);opacity:0}}@keyframes rds{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.radar .rings i,.radar .sweep{animation:none!important}}';
+  document.head.appendChild(st);
+})();
+
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '.tabs-in[data-n="4"] .tab{font-size:14px;padding-inline:4px;gap:5px;white-space:nowrap}.tabs-in[data-n="4"] .badge{min-width:18px;height:18px;font-size:11px;padding:0 4px}';
   document.head.appendChild(st);
 })();
