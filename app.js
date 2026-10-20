@@ -605,6 +605,7 @@ function onShopOrders(snap) {
   orders.forEach((o) => {
     const before = S.prev.get(o.id);
     if (S.openReady && before === 'abierto' && o.estado === 'asignado') { beep([660, 990]); toast((o.driverName || 'Un repartidor') + ' tomó el pedido ' + folio(o.id) + '.'); }
+    if (S.openReady && (before === 'asignado' || before === 'recogido') && o.estado === 'entregado') { try { delivNotice(o); } catch (e2) {} }
     S.prev.set(o.id, o.estado);
   });
   S.openReady = true; S.myOrders = orders; mergeOrders(); render();
@@ -2073,3 +2074,28 @@ function wzDone(id) {
   });
 }
 setInterval(wzSync, 400);
+
+/* ---------- aviso animado: "tu pedido fue entregado" ---------- */
+const DELIV_SVG = '<svg viewBox="0 0 120 70" width="96" height="56" aria-hidden="true"><g class="dv-lines" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".35"><path d="M2 28h14"/><path d="M6 38h12"/><path d="M0 48h10"/></g><g class="dv-bike">' +
+  '<g class="dv-wheel" style="transform-origin:34px 54px"><circle cx="34" cy="54" r="11" fill="none" stroke="currentColor" stroke-width="3.5"/><path d="M34 45v18M25 54h18" stroke="currentColor" stroke-width="2"/></g>' +
+  '<g class="dv-wheel" style="transform-origin:96px 54px"><circle cx="96" cy="54" r="11" fill="none" stroke="currentColor" stroke-width="3.5"/><path d="M96 45v18M87 54h18" stroke="currentColor" stroke-width="2"/></g>' +
+  '<path d="M34 54l14-14h24l10-14M72 40l24 14M60 40l-4 14" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>' +
+  '<circle cx="58" cy="14" r="7" fill="currentColor"/><path d="M58 22l-6 14h14" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+  '<rect x="30" y="22" width="20" height="18" rx="3" fill="#f6b400" stroke="currentColor" stroke-width="3"/></g></svg>';
+let delivT = null;
+function delivNotice(o) {
+  ensureAudio(); beep([523, 659, 784, 1047]);
+  let d = document.getElementById('wzDel');
+  if (!d) {
+    const st = document.createElement('style');
+    st.textContent = '#wzDel{position:fixed;left:12px;right:12px;top:12px;z-index:70;background:#fff;color:#16202a;border:3px solid #1f9d55;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:12px 14px;display:flex;align-items:center;gap:12px;transform:translateY(-140%);transition:transform .45s cubic-bezier(.2,1.2,.3,1)}#wzDel.on{transform:none}#wzDel .dv-ic{color:#16202a;flex:none}#wzDel b{display:block;font-size:19px;color:#1f9d55}#wzDel span{font-size:15px;line-height:1.3}#wzDel a{display:inline-block;margin-top:4px;font-weight:700;color:#16202a}.dv-bike{animation:dvr 1.1s ease-in-out infinite alternate}.dv-wheel{animation:dvw .6s linear infinite}@keyframes dvr{from{transform:translateX(-3px)}to{transform:translateX(4px)}}@keyframes dvw{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.dv-bike,.dv-wheel{animation:none}}';
+    document.head.appendChild(st);
+    d = document.createElement('div'); d.id = 'wzDel'; d.setAttribute('role', 'status'); d.setAttribute('aria-live', 'polite');
+    document.body.appendChild(d);
+    d.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-dvh]')) { e.preventDefault(); S.tab = 'historial'; d.classList.remove('on'); render(); } });
+  }
+  d.innerHTML = '<div class="dv-ic">' + DELIV_SVG + '</div><div><b>¡Entregado con éxito!</b><span>Tu servicio ' + esc(folio(o.id)) + ' ha sido entregado con éxito. Gracias por usar Gasca.</span><br><a href="#" data-dvh="1">Ver historial</a></div>';
+  requestAnimationFrame(() => d.classList.add('on'));
+  clearTimeout(delivT); delivT = setTimeout(() => d.classList.remove('on'), 7000);
+  try { buzz(); } catch (e) {}
+}
