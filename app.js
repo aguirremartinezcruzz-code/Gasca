@@ -1418,11 +1418,13 @@ $('#orderForm').addEventListener('submit', async (e) => {
     if (tarifa < 1 || tarifa > 2000) throw new Error('tarifa');
     const id = await createOrder(o);
     if (isCli(S.profile)) { saveDraft(id); S.minOffer = 0; }
+    try { wzSave(); } catch (e2) {}
     ['o-cliente', 'o-tel', 'o-dest', 'o-calle', 'o-num', 'o-int', 'o-col', 'o-ref', 'o-desc', 'o-cobro'].forEach((i) => { $('#' + i).value = ''; });
     ['p-calle', 'p-col', 'o-prod'].forEach((i) => { $('#' + i).value = ''; }); cliSum();
     saveCity();
     S.tab = 'pedidos';
     toast('Pedido ' + folio(id) + ' enviado a los repartidores.');
+    try { wzDone(id); } catch (e2) {}
   } catch (err) {
     toast(err && err.message === 'tarifa' ? 'El pago al repartidor debe ser entre $1 y $2,000.' : 'No se pudo enviar el pedido. Intenta de nuevo.');
   }
@@ -1924,3 +1926,149 @@ function cliSum() {
   if (!head || !head.classList.contains('sec-h')) return;
   head.after(c.closest('.field'), t.closest('.field'));
 })();
+
+/* ---------- asistente paso a paso para generar pedidos ---------- */
+const WZ = { step: 0, key: '', steps: [], all: [] };
+const wzOff = () => lsGet('gasca_nowiz') === '1';
+const wzF = (id) => { const e = document.getElementById(id); return e ? e.closest('.field') : null; };
+function wzLoad(k) { try { return JSON.parse(lsGet(k) || 'null'); } catch (e) { return null; } }
+const wzCliKey = () => 'gasca_wz_cli_' + S.uid, wzLastKey = () => 'gasca_wz_last_' + S.uid;
+const WZ_ADDR = ['o-cliente', 'o-tel', 'o-calle', 'o-num', 'o-int', 'o-col', 'o-ciudad', 'o-mun', 'o-ref'];
+function wzSave() {
+  const c = {}; WZ_ADDR.forEach((i) => { c[i] = ($('#' + i).value || '').trim(); });
+  if (c['o-cliente']) {
+    const list = (wzLoad(wzCliKey()) || []).filter((x) => !(x['o-tel'] === c['o-tel'] && x['o-calle'] === c['o-calle'] && x['o-num'] === c['o-num']));
+    list.unshift(c); lsSet(wzCliKey(), JSON.stringify(list.slice(0, 8)));
+  }
+  const last = Object.assign({}, c);
+  ['o-desc', 'o-tarifa', 'o-cobro', 'o-prod', 'p-calle', 'p-col', 'p-ciudad', 'p-mun'].forEach((i) => { last[i] = ($('#' + i).value || '').trim(); });
+  last.ctipo = (document.querySelector('input[name=ctipo]:checked') || {}).value || 'e';
+  last.cquien = (document.querySelector('input[name=cquien]:checked') || {}).value || 'r';
+  lsSet(wzLastKey(), JSON.stringify(last));
+}
+function wzFill(o, ids) {
+  ids.forEach((i) => { if (o[i] !== undefined && $('#' + i)) { $('#' + i).value = o[i]; $('#' + i).dispatchEvent(new Event('input', { bubbles: true })); } });
+}
+function wzBuild() {
+  const cli = isCli(S.profile);
+  const addr = [wzF('o-calle'), $('#o-num').parentElement.parentElement, wzF('o-col'), wzF('o-ciudad'), wzF('o-mun'), wzF('o-ref')];
+  const who = [wzF('o-cliente'), wzF('o-tel'), $('#wzFreq')];
+  const pair = $('#orderForm .pair'), btn = $('#orderBtn'), sum = $('#wzSum'), pk = wzF('o-pick');
+  const pay = [pair, $('#minNote')];
+  WZ.steps = cli ? [
+    { t: '📦 ¿Qué vas a enviar?', h: 'Por ejemplo: un martillo, zapatos escolares, un paquete.', e: [wzF('o-desc'), $('#wzLast')] },
+    { t: '🛍️ ¿Hay una venta de por medio?', h: 'Elige una opción. Si el repartidor tiene que pagar o cobrar un producto, aquí lo indicas.', e: [$('#cliPay'), $('#fProd')], chk: 'v' },
+    { t: '💵 ¿Quién paga el mandadito?', h: 'Y cuánto ofreces. Los repartidores pueden aceptar tu oferta o proponerte otra.', e: [$('#cliQuien')].concat(pay), chk: 'o' },
+    { t: '📍 ¿Dónde lo recogemos?', h: 'La dirección de donde el repartidor va a recoger.', e: [$('#pickFields')] },
+    { t: '🙋 ¿A quién se lo entregamos?', h: 'Nombre y WhatsApp de quien lo recibe. Si ya le has enviado antes, tócalo abajo.', e: who },
+    { t: '🏠 ¿En qué dirección se entrega?', h: 'Mientras más claro, más rápido llega.', e: addr },
+    { t: '✅ Revisa tu pedido', h: 'Si todo está bien, toca Generar pedido.', e: [sum, $('#paySum'), btn], last: true }
+  ] : [
+    { t: '📦 ¿Qué se entrega?', h: 'Por ejemplo: 2 pizzas grandes y 1 refresco.', e: [wzF('o-desc'), $('#wzLast')] },
+    { t: '🙋 ¿A quién se lo entregamos?', h: 'Nombre y WhatsApp de tu cliente. Si ya le has enviado antes, tócalo abajo.', e: who },
+    { t: '🏠 ¿En qué dirección?', h: 'Mientras más claro, más rápido llega.', e: addr },
+    { t: '💵 ¿Cuánto se cobra?', h: 'Si el cliente ya pagó, deja "Cobrar al cliente" vacío.', e: pay },
+    { t: '✅ Revisa tu pedido', h: 'Si todo está bien, toca Generar pedido.', e: [sum, pk, btn], last: true }
+  ];
+  WZ.all = [];
+  WZ.steps.forEach((st) => st.e.forEach((x) => { if (x && WZ.all.indexOf(x) < 0) WZ.all.push(x); }));
+  [wzF('o-calle').previousElementSibling, pk, $('#paySum'), $('#cliPay'), $('#cliQuien'), $('#fProd'), $('#pickFields'), $('#minNote')].forEach((x) => { if (x && WZ.all.indexOf(x) < 0) WZ.all.push(x); });
+}
+function wzSumHtml() {
+  const cli = isCli(S.profile), row = (k, v, n) => '<div class="line"><span class="k">' + k + '</span><span class="v">' + esc(v) + ' <a href="#" data-wzgo="' + n + '">Cambiar</a></span></div>';
+  const n = (i) => i; let h = '<div class="sumbox wzsum"><b>Tu pedido</b>';
+  if (cli) h += row('Lleva', val('o-desc'), 0) + row('Recoger en', buildPick(), 3) + row('Entregar a', val('o-cliente') + ' · ' + val('o-tel') + ' · ' + buildDest(), 4);
+  else h += row('Lleva', val('o-desc'), 0) + row('Entregar a', val('o-cliente') + ' · ' + val('o-tel') + ' · ' + buildDest(), 1) +
+    row('Cobrar al cliente', Number($('#o-cobro').value) > 0 ? pesos(Number($('#o-cobro').value)) : 'Ya pagó', 3) + row('Pago al repartidor', pesos(Number($('#o-tarifa').value) || 0), 3);
+  return h + '</div>';
+}
+function wzValid(i) {
+  const st = WZ.steps[i];
+  for (const el of st.e) {
+    if (!el || el.hidden || el.closest('[hidden]')) continue;
+    for (const inp of el.querySelectorAll('input:not([type=radio]),textarea')) {
+      if (inp.closest('[hidden]')) continue;
+      if (!inp.checkValidity()) { inp.reportValidity(); try { inp.focus(); } catch (e) {} return false; }
+    }
+  }
+  if (st.chk === 'v') {
+    const tp = (document.querySelector('input[name=ctipo]:checked') || {}).value;
+    if (tp === 'v' && !(Number($('#o-prod').value) > 0)) { toast('Escribe cuánto cuesta el producto.'); return false; }
+  }
+  if (st.chk === 'o' && S.minOffer && (Math.round(Number($('#o-tarifa').value) || 0) < S.minOffer)) { toast('Tu oferta debe ser de ' + pesos(S.minOffer) + ' o más.'); return false; }
+  return true;
+}
+function wzGo(n) { WZ.step = Math.max(0, Math.min(WZ.steps.length - 1, n)); WZ.dirty = true; wzSync(); try { window.scrollTo(0, 0); } catch (e) {} }
+function wzFreqHtml() {
+  const l = wzLoad(wzCliKey()) || [];
+  return l.length ? '<small class="wzlab">Clientes frecuentes</small><div class="wzchips">' + l.map((c, i) => '<button type="button" class="wzchip" data-wzcli="' + i + '">' + esc(c['o-cliente']) + '<small>' + esc(c['o-calle'] || '') + '</small></button>').join('') + '</div>' : '';
+}
+function wzInit() {
+  const f = $('#orderForm'); if (!f || f.dataset.wz) return;
+  f.dataset.wz = '1';
+  f.insertAdjacentHTML('afterbegin', '<div id="wzTop"><div class="wz-bar"><i id="wzBar"></i></div><div class="wz-n" id="wzN"></div><h3 id="wzTitle"></h3><p id="wzHint" class="hint"></p></div>');
+  f.insertAdjacentHTML('beforeend', '<div id="wzNav"><button type="button" class="btn ghost" id="wzBack">Atrás</button><button type="button" class="btn primary" id="wzNext">Siguiente</button></div>');
+  const btn = $('#orderBtn');
+  ($('#paySum') || btn).insertAdjacentHTML('beforebegin', '<div id="wzSum"></div>');
+  wzF('o-cliente').insertAdjacentHTML('beforebegin', '<div id="wzFreq"></div>');
+  wzF('o-desc').insertAdjacentHTML('afterend', '<div id="wzLast"></div>');
+  const st = document.createElement('style');
+  st.textContent = '.wz-on .wz-off{display:none!important}.wz-on .sec-h{display:none!important}.wz-on .sumbox{margin:8px 0!important;padding:10px 14px!important}#wzSum:empty{display:none}.wz-bar{height:8px;background:var(--line,#dde3ea);border-radius:99px;overflow:hidden}.wz-bar i{display:block;height:100%;background:#f6b400;border-radius:99px;transition:width .3s}.wz-n{margin:8px 0 4px;font-weight:700;opacity:.65;font-size:14px}#wzTitle{font-size:24px;line-height:1.2;margin:6px 0 4px}#wzHint{margin:0 0 16px}#wzNav{display:flex;gap:10px;margin-top:16px}#wzNav .btn{flex:1;min-height:52px;font-size:17px}.wzchips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 14px}.wzchip{border:2px solid var(--line,#cfd6de);background:#fff;border-radius:14px;padding:8px 12px;font-weight:700;text-align:left;min-height:48px}.wzchip small{display:block;font-weight:400;opacity:.65}.wzlab{display:block;font-weight:700;opacity:.7;margin-top:4px}.wzsum a{margin-left:6px;font-weight:700}#wzLast .btn{margin:12px 0}#wzDone{position:fixed;inset:0;z-index:60;background:var(--bg,#eef1f5);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center}#wzDone .btn{width:100%;max-width:320px;min-height:52px;font-size:17px}#wzDone h2{margin:0;font-size:26px}#wzDone .radar{margin:0 auto}';
+  document.head.appendChild(st);
+  f.addEventListener('click', (e) => {
+    const t = e.target.closest ? e.target : null; if (!t || wzOff()) return;
+    if (t.closest('#wzNext')) { if (wzValid(WZ.step)) wzGo(WZ.step + 1); }
+    else if (t.closest('#wzBack')) wzGo(WZ.step - 1);
+    else if (t.closest('[data-wzgo]')) { e.preventDefault(); wzGo(Number(t.closest('[data-wzgo]').getAttribute('data-wzgo'))); }
+    else if (t.closest('[data-wzcli]')) {
+      const c = (wzLoad(wzCliKey()) || [])[Number(t.closest('[data-wzcli]').getAttribute('data-wzcli'))];
+      if (c) { wzFill(c, WZ_ADDR); toast('Listo: datos de ' + c['o-cliente'] + '.'); wzGo(WZ.step + 1); }
+    } else if (t.closest('#wzRepeat')) {
+      const l = wzLoad(wzLastKey()); if (!l) return;
+      wzFill(l, WZ_ADDR.concat(['o-desc', 'o-tarifa', 'o-cobro', 'o-prod', 'p-calle', 'p-col', 'p-ciudad', 'p-mun']));
+      ['ctipo', 'cquien'].forEach((n) => { const r = document.querySelector('input[name=' + n + '][value=' + (l[n] || 'e') + ']'); if (r) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); } });
+      toast('Listo: repetí tu último pedido. Revísalo.'); wzGo(WZ.steps.length - 1);
+    }
+  });
+  f.addEventListener('submit', (e) => {
+    if (wzOff()) return;
+    if (WZ.step < WZ.steps.length - 1) { e.preventDefault(); e.stopImmediatePropagation(); if (wzValid(WZ.step)) wzGo(WZ.step + 1); return; }
+    for (let i = 0; i < WZ.steps.length - 1; i++) if (!wzValid(i)) { e.preventDefault(); e.stopImmediatePropagation(); wzGo(i); return; }
+  }, true);
+}
+function wzSync() {
+  const f = $('#orderForm');
+  if (!f || !S.profile || view() !== 'shop' || $('#shopNew').hidden) return;
+  wzInit();
+  if (wzOff()) { f.classList.remove('wz-on'); f.noValidate = false; WZ.all.forEach((x) => x && x.classList.remove('wz-off')); ['wzTop', 'wzNav', 'wzSum', 'wzFreq', 'wzLast'].forEach((i) => { const e = $('#' + i); if (e) e.hidden = true; }); return; }
+  ['wzTop', 'wzNav', 'wzSum', 'wzFreq', 'wzLast'].forEach((i) => { const e = $('#' + i); if (e) e.hidden = false; });
+  const key = isCli(S.profile) ? 'c' : 's';
+  if (key !== WZ.key || !WZ.steps.length) { WZ.key = key; WZ.step = 0; wzBuild(); WZ.dirty = true; }
+  f.classList.add('wz-on'); f.noValidate = true;
+  const st = WZ.steps[WZ.step], n = WZ.steps.length;
+  WZ.all.forEach((x) => { if (x) x.classList.toggle('wz-off', st.e.indexOf(x) < 0); });
+  $('#wzBar').style.width = Math.round(((WZ.step + 1) / n) * 100) + '%';
+  $('#wzN').textContent = 'Paso ' + (WZ.step + 1) + ' de ' + n;
+  $('#wzTitle').textContent = st.t; $('#wzHint').textContent = st.h;
+  $('#wzBack').hidden = WZ.step === 0; $('#wzNext').hidden = !!st.last;
+  const btn = $('#orderBtn'); if (!btn.disabled) btn.textContent = 'Generar pedido';
+  if (WZ.dirty) {
+    WZ.dirty = false;
+    if (st.last) $('#wzSum').innerHTML = wzSumHtml(); else $('#wzSum').innerHTML = '';
+    $('#wzFreq').innerHTML = wzFreqHtml();
+    $('#wzLast').innerHTML = wzLoad(wzLastKey()) ? '<button type="button" class="btn ghost block" id="wzRepeat">↻ Repetir mi último pedido</button>' : '';
+  }
+}
+function wzDone(id) {
+  if (wzOff()) return;
+  WZ.step = 0; WZ.dirty = true;
+  const d = document.createElement('div'); d.id = 'wzDone';
+  d.innerHTML = '<div class="radar on" aria-hidden="true"><div class="rings"><i></i><i></i><i></i><span class="sweep"></span><span class="core">🛵</span></div></div><h2>¡Pedido enviado!</h2><p class="hint">Pedido ' + esc(folio(id)) + ' · buscando repartidor…</p>' +
+    '<button type="button" class="btn primary" data-wzd="ver">Ver mi pedido</button><button type="button" class="btn ghost" data-wzd="otro">Hacer otro pedido</button>';
+  document.body.appendChild(d);
+  d.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('[data-wzd]'); if (!b) return;
+    S.tab = b.getAttribute('data-wzd') === 'otro' ? 'nuevo' : 'pedidos'; d.remove(); render();
+  });
+}
+setInterval(wzSync, 400);
