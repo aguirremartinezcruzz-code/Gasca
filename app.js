@@ -169,6 +169,17 @@ const VER = {
   ]
 };
 const ROLE_LBL = { rider: 'Repartidor', shop: 'Tienda o restaurante' };
+const TEL_DOM = '@clientes.gasca.app';
+const isCli = (u) => !!u && u.role === 'shop' && typeof u.addr === 'string' && u.addr.indexOf('CLIENTE') === 0;
+const roleLbl = (u) => (isCli(u) ? 'Cliente (mandaditos)' : ROLE_LBL[u && u.role] || '');
+const VER_CLI = [
+  { k: 'local', t: 'Selfie', h: 'Una foto de tu cara, de frente y con buena luz. Sin lentes oscuros ni gorra.', selfie: true },
+  { k: 'ine', t: 'INE por el frente', h: 'Foto de tu INE por el frente. Que se vean tu foto y tus datos completos.' },
+  { k: 'ine_atras', t: 'INE por atrás', h: 'Foto de tu INE por la parte de atrás. Que se lea todo.' }
+];
+const slotsFor = (u) => (isCli(u) ? VER_CLI : VER[u && u.role] || []);
+const telEmail = (x) => { const d = String(x || '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) + TEL_DOM : ''; };
+const telOf = (email) => String(email || '').endsWith(TEL_DOM) ? email.slice(0, -TEL_DOM.length) : '';
 function safeImg(s) { return typeof s === 'string' && s.length < 260000 && /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(s) ? s : ''; }
 function personStatus(u, a) {
   const docsEn = (u && u.docsEn) || 0;
@@ -196,6 +207,15 @@ function view() {
 
 /* ---------- entrar y crear cuenta ---------- */
 const af = $('#authForm');
+(function injectCli() {
+  const r = af.querySelector('input[value="rider"]'); if (!r) return;
+  const lab = r.closest('label'), n = lab.cloneNode(true);
+  n.querySelector('input').value = 'cliente'; n.querySelector('b').textContent = 'Cliente (mandaditos)'; n.querySelector('small').textContent = 'Pido un mandadito. No soy restaurante.';
+  lab.after(n);
+  const f = document.createElement('div'); f.className = 'field'; f.id = 'fTel'; f.hidden = true;
+  f.innerHTML = '<label for="a-tel">Tu teléfono (10 dígitos)</label><input id="a-tel" type="tel" inputmode="numeric" maxlength="14" autocomplete="tel" placeholder="Ej. 3111234567">';
+  $('#fEmail').before(f);
+})();
 const roleVal = () => (af.elements.role && af.elements.role.value) || '';
 function setMode(m) {
   S.authMode = m; S.authErr = '';
@@ -217,6 +237,14 @@ function setMode(m) {
   $('#a-pass').autocomplete = su ? 'new-password' : 'current-password';
   $('#authBtn').textContent = { login: 'Entrar', signup: 'Crear cuenta', owner: 'Entrar', profile: 'Guardar' }[m];
   $('#authBtn2').hidden = !ow;
+  { const cl = form && roleVal() === 'cliente';
+    $('#fEmail').hidden = pr || cl; $('#fTel').hidden = !(su && cl);
+    $('#a-email').type = 'text';
+    document.querySelector('label[for="a-email"]').textContent = m === 'login' ? 'Correo o teléfono' : 'Correo';
+    if (cl) { $('#lblName').textContent = 'Tu nombre completo'; $('#a-name').placeholder = 'Ej. María López'; }
+    if (cl) $('#authHint').textContent = 'Después te pediremos una selfie y tu INE por los dos lados para aprobar tu cuenta.';
+    else $('#authHint').textContent = 'Después te pediremos fotos de tus documentos para aprobar tu cuenta.';
+    if (m === 'login') $('#a-email').placeholder = 'correo o teléfono de 10 dígitos'; else $('#a-email').placeholder = 'tucorreo@ejemplo.com'; }
   const link = (act, txt) => '<button type="button" data-act="' + act + '">' + txt + '</button>';
   $('#authLinks').innerHTML = {
     login: link('mode-signup', 'Crear cuenta') + link('reset', 'Olvidé mi contraseña') + link('mode-owner', 'Soy el dueño'),
@@ -229,8 +257,8 @@ function setMode(m) {
 function showErr() { const el = $('#authErr'); el.hidden = !S.authErr; el.textContent = S.authErr; }
 function authMsg(e) {
   const c = (e && e.code) || '';
-  if (c === 'auth/email-already-in-use') return 'Ese correo ya tiene cuenta. Toca "Ya tengo cuenta".';
-  if (c === 'auth/invalid-credential' || c === 'auth/wrong-password' || c === 'auth/user-not-found' || c === 'auth/invalid-login-credentials') return 'Correo o contraseña incorrectos.';
+  if (c === 'auth/email-already-in-use') return (roleVal() === 'cliente' ? 'Ese teléfono ya tiene cuenta. Toca "Ya tengo cuenta".' : 'Ese correo ya tiene cuenta. Toca "Ya tengo cuenta".');
+  if (c === 'auth/invalid-credential' || c === 'auth/wrong-password' || c === 'auth/user-not-found' || c === 'auth/invalid-login-credentials') return 'Correo, teléfono o contraseña incorrectos.';
   if (c === 'auth/weak-password') return 'La contraseña debe tener al menos 6 caracteres.';
   if (c === 'auth/invalid-email') return 'Ese correo no se ve bien. Revísalo.';
   if (c === 'auth/too-many-requests') return 'Demasiados intentos. Espera unos minutos e intenta de nuevo.';
@@ -239,8 +267,9 @@ function authMsg(e) {
   return 'No se pudo completar. Intenta de nuevo.';
 }
 async function createProfile(uid, p) {
-  const rec = { id: uid, role: p.role, name: p.name, creadoEn: Date.now() };
-  if (p.role === 'shop') rec.addr = p.addr;
+  const cli = p.role === 'cliente';
+  const rec = { id: uid, role: cli ? 'shop' : p.role, name: p.name, creadoEn: Date.now() };
+  if (cli) rec.addr = 'CLIENTE · Tel ' + p.tel; else if (p.role === 'shop') rec.addr = p.addr;
   await setDoc(doc(db, 'users', uid), rec);
 }
 function setBusy(b) { S.authBusy = b; $('#authBtn').disabled = b; $('#authBtn2').disabled = b; }
@@ -250,34 +279,39 @@ af.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (S.authBusy) return;
   const m = S.authMode;
-  const email = $('#a-email').value.trim().toLowerCase(), pass = $('#a-pass').value;
-  const role = roleVal(), name = $('#a-name').value.trim(), addr = $('#a-addr').value.trim();
+  let email = $('#a-email').value.trim().toLowerCase(); const pass = $('#a-pass').value;
+  if (email && email.indexOf('@') < 0 && /^[\d\s+()-]+$/.test(email)) email = telEmail(email);
+  const role = roleVal(), tel = $('#a-tel').value.replace(/\D/g, '').slice(-10), name = $('#a-name').value.trim(), addr = $('#a-addr').value.trim();
   const fail = (msg) => { S.authErr = msg; showErr(); };
   S.authErr = ''; showErr();
   const needProfile = () => {
-    if (!role) return 'Elige si eres tienda o repartidor.';
+    if (!role) return 'Elige si eres tienda, repartidor o cliente.';
+    if (role === 'cliente' && m === 'signup' && tel.length !== 10) return 'Escribe tu número de teléfono de 10 dígitos.';
     if (name.length < 2) return 'Escribe tu nombre.';
     if (role === 'shop' && addr.length < 5) return 'Escribe la dirección de tu negocio.';
     return '';
   };
   try {
     if (m === 'login' || m === 'owner') {
-      if (!email || !pass) return fail('Escribe tu correo y tu contraseña.');
+      if (!email || !pass) return fail('Escribe tu correo o teléfono y tu contraseña.');
       if (m === 'owner' && (!OWNER_OK || email !== OWNER)) return fail('Ese correo no es el del dueño.');
       setBusy(true);
       await signInWithEmailAndPassword(auth, email, pass);
     } else if (m === 'signup') {
       const pe = needProfile(); if (pe) return fail(pe);
+      if (role === 'cliente') email = telEmail(tel);
       if (!email) return fail('Escribe tu correo.');
       if (pass.length < 6) return fail('La contraseña debe tener al menos 6 caracteres.');
       if (OWNER_OK && email === OWNER) return fail('Ese correo es del dueño. Usa "Soy el dueño".');
       setBusy(true); S.creating = true; render();
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
-      await createProfile(cred.user.uid, { role, name, addr });
+      await createProfile(cred.user.uid, { role, name, addr, tel });
     } else if (m === 'profile') {
       const pe = needProfile(); if (pe) return fail(pe);
+      const ptel = telOf(S.user && S.user.email);
+      if (role === 'cliente' && !ptel) return fail('Para ser cliente crea tu cuenta con tu teléfono. Toca Salir y elige "Crear cuenta".');
       setBusy(true);
-      await createProfile(S.uid, { role, name, addr });
+      await createProfile(S.uid, { role, name, addr, tel: ptel });
     }
   } catch (err) { fail(authMsg(err)); }
   S.creating = false; setBusy(false); render();
@@ -305,7 +339,9 @@ async function ownerResend() {
   try { await sendEmailVerification(auth.currentUser); toast('Te enviamos el correo otra vez.'); } catch (e) { toast('Espera un momento antes de pedirlo de nuevo.'); }
 }
 async function resetPass() {
-  const email = $('#a-email').value.trim().toLowerCase();
+  const raw = $('#a-email').value.trim().toLowerCase();
+  if (raw && raw.indexOf('@') < 0 && /^[\d\s+()-]+$/.test(raw)) { S.authErr = 'Si olvidaste tu contraseña, escríbenos por WhatsApp al ' + SUPPORT_TEL + ' y te ayudamos.'; showErr(); return; }
+  const email = raw;
   if (!email) { S.authErr = 'Escribe tu correo arriba y vuelve a tocar "Olvidé mi contraseña".'; showErr(); return; }
   try { await sendPasswordResetEmail(auth, email); S.authErr = ''; showErr(); toast('Si ese correo tiene cuenta, te enviamos un enlace para cambiar la contraseña.'); }
   catch (err) { S.authErr = authMsg(err); showErr(); }
@@ -338,7 +374,7 @@ onAuthStateChanged(auth, (u) => bootstrap(u));
 function startPerson() {
   listen(unsubs, doc(db, 'users', S.uid), (s) => {
     S.profile = s.exists() ? s.data() : null; S.profileReady = true;
-    if (S.profile) { S.role = S.profile.role; S.name = S.profile.name || ''; S.addr = S.profile.addr || ''; if (!S.tab) S.tab = S.role === 'rider' ? 'disp' : 'nuevo'; }
+    if (S.profile) { S.role = S.profile.role; S.name = S.profile.name || ''; S.addr = isCli(S.profile) ? '' : (S.profile.addr || ''); if (!S.tab) S.tab = S.role === 'rider' ? 'disp' : 'nuevo'; }
     syncRole(); render();
   });
   listen(unsubs, doc(db, 'aprobaciones', S.uid), (s) => {
@@ -594,7 +630,7 @@ async function uploadTicket(id, file) {
   delete S.uploading[k]; render();
 }
 async function sendDocs() {
-  const slots = VER[S.role] || [];
+  const slots = slotsFor(S.profile);
   const have = slots.every((s) => safeImg(S.fotos[s.k]));
   if (!canAct() || !have || !S.consent || S.busy.has('verify')) return;
   if (S.role === 'rider' && !regDone()) return;
@@ -754,7 +790,7 @@ function renderBanner() {
 }
 
 function renderVerify() {
-  const el = $('#viewVerify'), st = myStatus(), slots = VER[S.role] || [];
+  const el = $('#viewVerify'), st = myStatus(), slots = slotsFor(S.profile);
   const headH = '<h1>Verifica tu cuenta</h1>';
   if (st === 'revision' && !S.verEdit) {
     el.innerHTML = headH + '<div class="empty"><b>Tus documentos están en revisión</b><span>La administración los revisa. Esta pantalla se actualiza sola cuando te aprueben.</span></div>' +
@@ -762,7 +798,7 @@ function renderVerify() {
     return;
   }
   const a = S.myAprob;
-  let h = headH + '<p class="lede">' + (S.role === 'rider' ? 'Para recibir pedidos necesitamos 6 fotos. Solo sirven para confirmar quién eres.' : 'Para pedir motos necesitamos 3 fotos. Solo sirven para confirmar tu negocio.') + '</p>';
+  let h = headH + '<p class="lede">' + (S.role === 'rider' ? 'Para recibir pedidos necesitamos 6 fotos. Solo sirven para confirmar quién eres.' : isCli(S.profile) ? 'Para pedir mandaditos necesitamos 3 fotos: tu selfie y tu INE por los dos lados. Solo sirven para confirmar quién eres.' : 'Para pedir motos necesitamos 3 fotos. Solo sirven para confirmar tu negocio.') + '</p>';
   if (st === 'rechazado') h += '<div class="banner"><b>No se aprobaron tus documentos.</b> ' + esc(a && a.motivo ? a.motivo : 'Revisa las fotos y súbelas de nuevo.') + '</div>';
   let ready = 0;
   slots.forEach((s) => {
@@ -770,7 +806,7 @@ function renderVerify() {
     if (im) ready++;
     h += '<div class="slot"><div class="t"><b>' + esc(s.t) + '</b>' + (up ? '<span class="chip abierto">Subiendo…</span>' : (im ? '<span class="chip entregado">Lista</span>' : '<span class="chip">Falta</span>')) + '</div>' +
       '<p class="hint">' + esc(s.h) + '</p>' + (im ? '<img class="thumb" src="' + im + '" alt="' + esc(s.t) + '">' : '') +
-      '<input class="sr" type="file" accept="image/*" id="f-' + s.k + '" data-foto="' + s.k + '"' + (up ? ' disabled' : '') + '>' +
+      '<input class="sr" type="file" accept="image/*"' + (s.selfie ? ' capture="user"' : '') + ' id="f-' + s.k + '" data-foto="' + s.k + '"' + (up ? ' disabled' : '') + '>' +
       '<label class="btn ' + (im ? 'ghost' : 'primary') + ' small" for="f-' + s.k + '">' + (im ? 'Cambiar foto' : 'Tomar o subir foto') + '</label></div>';
   });
   const all = ready === slots.length, sending = S.busy.has('verify');
@@ -995,9 +1031,9 @@ function renderMonitor() {
 }
 
 function altaCard(u) {
-  const slots = VER[u.role] || [], open = S.review === u.id, busy = S.busy.has('al' + u.id);
+  const slots = slotsFor(u), open = S.review === u.id, busy = S.busy.has('al' + u.id);
   const n = Array.isArray(u.fotos) ? u.fotos.length : 0;
-  let h = '<article class="order"><div class="head"><span class="folio">' + esc(u.name) + '</span><span class="chip abierto">' + esc(ROLE_LBL[u.role] || '') + '</span><span class="ago">' + ago(u.docsEn) + '</span></div>' +
+  let h = '<article class="order"><div class="head"><span class="folio">' + esc(u.name) + '</span><span class="chip abierto">' + esc(roleLbl(u)) + '</span><span class="ago">' + ago(u.docsEn) + '</span></div>' +
     (u.role === 'shop' && u.addr ? '<div class="line"><span class="k">Dirección</span><span class="v">' + esc(u.addr) + '</span></div>' : '') +
     '<div class="line"><span class="k">Fotos enviadas</span><span class="v">' + n + ' de ' + slots.length + '</span></div>' +
     (u.role === 'rider' ? '<div class="line"><span class="k">Reglamento</span><span class="v">' + (u.reglamentoEn ? 'Aceptado v' + esc(u.reglamentoV || '') + ' · ' + new Date(u.reglamentoEn).toLocaleString('es-MX') : 'No lo ha aceptado') + '</span></div>' : '');
@@ -1025,7 +1061,7 @@ function renderAltas() {
   h += '<div class="subhead">Aprobados (' + apr.length + ')</div>';
   h += apr.length ? apr.map((x) => {
     const u = x.u, a = S.aprobs[u.id] || {};
-    return '<div class="pr"><div class="t"><b>' + esc(repTag(u.id) + u.name) + '</b><span class="chip entregado">Aprobado</span></div><small>' + esc(ROLE_LBL[u.role] || '') + ' · aprobado ' + ago(a.en || u.creadoEn) + '</small>' +
+    return '<div class="pr"><div class="t"><b>' + esc(repTag(u.id) + u.name) + '</b><span class="chip entregado">Aprobado</span></div><small>' + esc(roleLbl(u)) + ' · aprobado ' + ago(a.en || u.creadoEn) + '</small>' +
       (S.suspId === u.id
         ? '<div class="actions"><button class="btn ghost small" type="button" data-act="susp-no">Conservar</button><button class="btn danger small" type="button" data-act="susp-yes" data-id="' + esc(u.id) + '">Sí, suspender</button></div>'
         : '<div class="actions"><button class="btn ghost small" type="button" data-act="susp" data-id="' + esc(u.id) + '">Suspender</button></div>') + '</div>';
@@ -1033,7 +1069,7 @@ function renderAltas() {
   if (oth.length) {
     h += '<div class="subhead">Sin enviar o rechazados (' + oth.length + ')</div>' + oth.map((x) => {
       const a = S.aprobs[x.u.id];
-      return prRow(x.u.name, verLabel(x.st), '', esc(ROLE_LBL[x.u.role] || '') + (x.st === 'rechazado' && a && a.motivo ? ' · ' + esc(a.motivo) : '') + ' · se unió ' + ago(x.u.creadoEn));
+      return prRow(x.u.name, verLabel(x.st), '', esc(roleLbl(x.u)) + (x.st === 'rechazado' && a && a.motivo ? ' · ' + esc(a.motivo) : '') + ' · se unió ' + ago(x.u.creadoEn));
     }).join('');
   }
   el.innerHTML = h;
@@ -1113,7 +1149,7 @@ function render() {
   if (v === 'owner') $('#ownerMail').textContent = 'Correo: ' + S.email;
   const who = $('#who');
   who.hidden = !S.user || v === 'loading';
-  if (S.user) who.textContent = v === 'admin' ? 'Dueño' : (S.name ? ({ shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + (S.role === 'rider' && S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') + ' · ' : '') + S.name : 'Salir');
+  if (S.user) who.textContent = v === 'admin' ? 'Dueño' : (S.name ? (isCli(S.profile) ? 'Cliente · ' : { shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + (S.role === 'rider' && S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') + ' · ' : '') + S.name : 'Salir');
   renderBanner();
   if (v !== 'rider') { S.sheetId = null; if (!$('#sheet').hidden) { $('#sheet').hidden = true; S.sheetKey = ''; } }
   let tabs = null;
