@@ -1534,7 +1534,7 @@ function saveCity() { lsSet('gasca_ciudad', val('o-ciudad')); lsSet('gasca_mun',
 (function () {
   const pk = document.getElementById('o-pick'); if (!pk) return;
   const f = (id, label, ph, max) => '<div class="field"><label for="' + id + '">' + label + '</label><input id="' + id + '" type="text" maxlength="' + max + '" placeholder="' + ph + '"></div>';
-  pk.closest('.field').insertAdjacentHTML('afterend', '<div id="pickFields" hidden><div class="field"><label>Dirección de recogida</label></div>' +
+  pk.closest('.field').insertAdjacentHTML('afterend', '<div id="pickFields" hidden><div class="field sec-h"><label>Dirección de recolección</label></div>' +
     f('p-calle', 'Calle y número', 'Ej. Av. Insurgentes 100', 70) + f('p-col', 'Colonia', 'Ej. Condesa', 50) + f('p-ciudad', 'Ciudad', 'Ej. Tepic', 40) + f('p-mun', 'Municipio', 'Ej. Tepic', 40) + '</div>');
   $('#p-ciudad').value = lsGet('gasca_pciudad') || lsGet('gasca_ciudad'); $('#p-mun').value = lsGet('gasca_pmun') || lsGet('gasca_mun');
 })();
@@ -1543,7 +1543,7 @@ function saveCity() { lsSet('gasca_ciudad', val('o-ciudad')); lsSet('gasca_mun',
   const box = old.closest('.field'); old.required = false; box.hidden = true;
   const f = (id, label, ph, max, req, extra) => '<div class="field"' + (extra || '') + '><label for="' + id + '">' + label + (req ? '' : ' (opcional)') + '</label><input id="' + id + '" type="text" maxlength="' + max + '"' + (req ? ' required' : '') + ' placeholder="' + ph + '"></div>';
   box.insertAdjacentHTML('beforebegin',
-    '<div class="field"><label>Dirección de entrega</label></div>' +
+    '<div class="field sec-h"><label>Dirección de entrega</label></div>' +
     f('o-calle', 'Calle', 'Ej. Av. Insurgentes', 60, true) +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' + f('o-num', 'Número exterior', 'Ej. 100', 10, true) + f('o-int', 'Interior', 'Ej. 4B', 10, false) + '</div>' +
     f('o-col', 'Colonia', 'Ej. Condesa', 50, true) +
@@ -1554,3 +1554,9 @@ function saveCity() { lsSet('gasca_ciudad', val('o-ciudad')); lsSet('gasca_mun',
 })();
 
 (function () { const m = document.getElementById('r-monto'); if (m) { m.min = '50'; m.placeholder = '$ mínimo 50'; } })();
+
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '.sec-h{margin:22px 0 14px!important;padding-bottom:6px;border-bottom:2px solid var(--line,#cfd6de)}.sec-h label{font-weight:800!important;font-size:17px!important;color:var(--ink,inherit)!important;letter-spacing:.02em}';
+  document.head.appendChild(st);
+})();
