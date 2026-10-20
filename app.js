@@ -489,10 +489,48 @@ async function expire(o) {
     if (ok) restoreDraft(o);
   } catch (e) { expiring.delete(o.id); }
 }
+const expSeen = new Set();
+const isExpired = (o) => o.estado === 'abierto' && isP(o) && Date.now() > deadline(o);
 function checkExpiry() {
-  if (S.role !== 'shop' || !isCli(S.profile) || !S.openReady) return;
-  S.orders.forEach((o) => { if (o.estado === 'abierto' && isP(o) && Date.now() > deadline(o)) expire(o); });
+  if (S.role !== 'shop' || !isCli(S.profile)) return;
+  let ch = false;
+  S.orders.forEach((o) => {
+    if (o.estado !== 'abierto' || !isP(o)) return;
+    const ex = Date.now() > deadline(o);
+    if (ex && !expSeen.has(o.id)) { expSeen.add(o.id); ch = true; if (S.tab === 'pedidos') beep([440, 330]); }
+    if (!ex) expSeen.delete(o.id);
+  });
+  if (ch) { if (!S.tab || S.tab === 'nuevo') S.tab = 'pedidos'; render(); }
 }
+const S_reVal = {};
+function expiredPanel(o) {
+  const v = S_reVal[o.id] != null ? S_reVal[o.id] : o.tarifa, busy = S.busy.has('re' + o.id);
+  return '<div class="paynote"><b>Nadie tomó tu oferta de ' + pesos(o.tarifa) + '.</b> Pon ' + pesos(o.tarifa) + ' o más para intentar de nuevo. Tus datos se conservan.' +
+    '<div class="field" style="margin-top:10px"><label for="re-' + esc(o.id) + '">Tu nueva oferta por el mandadito</label><input id="re-' + esc(o.id) + '" data-re="' + esc(o.id) + '" type="number" inputmode="numeric" min="' + esc(o.tarifa) + '" step="1" value="' + esc(v) + '"></div>' +
+    '<div class="actions" style="margin-top:8px"><button class="btn primary" type="button" data-act="re-offer" data-id="' + esc(o.id) + '"' + (busy || !canAct() ? ' disabled' : '') + '>' + (busy ? 'Enviando…' : 'Ofertar de nuevo') + '</button></div></div>';
+}
+async function reOffer(id) {
+  const o = byId(id);
+  if (!o || o.estado !== 'abierto' || !canAct() || S.busy.has('re' + id)) return;
+  const el = document.getElementById('re-' + id), m = Math.round(Number(el && el.value) || 0);
+  if (m < Number(o.tarifa)) { toast('Tu oferta debe ser de ' + pesos(o.tarifa) + ' o más.'); return; }
+  if (m > 2000) { toast('La oferta máxima es de $2,000.'); return; }
+  const d = pdesc(o), rec = d.tipo && d.quien === 'r';
+  const cobro = Math.round((Number(o.cobro) - (rec ? Number(o.tarifa) : 0) + (rec ? m : 0)) * 100) / 100;
+  const nid = newId(), codigo = String(1000 + Math.floor(Math.random() * 9000));
+  S.busy.add('re' + id); render();
+  try {
+    const b = writeBatch(db);
+    b.update(doc(db, 'orders', id), { estado: 'cancelado', canceladoEn: Date.now() });
+    b.set(doc(db, 'orders', nid), { id: nid, estado: 'abierto', driverId: '', driverName: '', creadoEn: Date.now(), shopId: S.uid, shop: o.shop, pickup: o.pickup, cliente: o.cliente, tel: o.tel, dest: o.dest, desc: o.desc, cobro, tarifa: m });
+    b.set(doc(db, 'codes', nid), { shopId: S.uid, codigo });
+    await b.commit();
+    delete S_reVal[id]; S.tab = 'pedidos';
+    toast('Pedido enviado otra vez con ' + pesos(m) + '.');
+  } catch (e) { toast('No se pudo enviar. Intenta de nuevo.'); }
+  S.busy.delete('re' + id); render();
+}
+document.addEventListener('input', (e) => { const t = e.target; if (t && t.getAttribute && t.getAttribute('data-re')) S_reVal[t.getAttribute('data-re')] = t.value; });
 function cdNote(o) {
   if (o.estado !== 'abierto' || !isP(o)) return '';
   return '<p class="paynote">Tiempo para que alguien la tome: <b data-dl="' + deadline(o) + '">' + Math.max(0, Math.ceil((deadline(o) - Date.now()) / 1000)) + '</b> s</p>';
@@ -974,7 +1012,7 @@ function shopCard(o) {
       ? '<div class="actions"><button class="btn ghost small" type="button" data-act="cancel-no">Conservar</button><button class="btn danger small" type="button" data-act="cancel-yes" data-id="' + esc(o.id) + '">Sí, cancelar</button></div>'
       : '<div class="actions"><button class="btn ghost small" type="button" data-act="cancel" data-id="' + esc(o.id) + '"' + (S.busy.has(o.id) ? ' disabled' : '') + '>Cancelar pedido</button></div>';
   }
-  return '<article class="order">' + head(o) + orderLines(o) + moneyRow(o) + sendNote(o) + offersFor(o) + cdNote(o) + s + act + '</article>';
+  return '<article class="order">' + head(o) + orderLines(o) + moneyRow(o) + sendNote(o) + (isExpired(o) ? expiredPanel(o) : offersFor(o) + cdNote(o)) + (isExpired(o) ? '' : s) + act + '</article>';
 }
 function renderShop() {
   const list = S.orders;
@@ -1387,6 +1425,7 @@ document.addEventListener('click', (e) => {
   else if (act === 'cancel-yes') cancelOrder(id);
   else if (act === 'accept') { ensureAudio(); accept(id); }
   else if (act === 'counter') { ensureAudio(); counter(id, Number(b.getAttribute('data-m'))); }
+  else if (act === 're-offer') reOffer(id);
   else if (act === 'of-yes') offerYes(b.getAttribute('data-oid'));
   else if (act === 'of-no') offerNo(b.getAttribute('data-oid'));
   else if (act === 'ignore') { S.ignored.add(id); S.queue = S.queue.filter((x) => x !== id); S.sheetId = null; clearTimeout(S.sheetT); syncSheet(); }
