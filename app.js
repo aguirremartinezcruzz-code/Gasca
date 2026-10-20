@@ -1017,6 +1017,24 @@ function shopCard(o) {
   }
   return '<article class="order">' + head(o) + orderLines(o) + moneyRow(o) + sendNote(o) + (isExpired(o) ? expiredPanel(o) : offersFor(o) + cdNote(o)) + (isExpired(o) ? '' : s) + act + '</article>';
 }
+function histHtml(list) {
+  const fin = list.filter((o) => o.estado === 'entregado' || o.estado === 'cancelado').sort((a, b) => lastAct(b) - lastAct(a));
+  if (!fin.length) return emptyBox('Todavía no hay historial', 'Aquí se guardan tus pedidos entregados y cancelados.');
+  const ok = fin.filter((o) => o.estado === 'entregado');
+  const sum = ok.reduce((t, o) => t + (Number(o.tarifa) || 0), 0);
+  const mes = ok.filter((o) => { const d = new Date(o.entregadoEn || o.creadoEn), n = new Date(); return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear(); });
+  let h = '<h2 class="section">Historial</h2><div class="sumbox"><div class="line"><span class="k">Entregados</span><span class="v">' + ok.length + '</span></div>' +
+    '<div class="line"><span class="k">Este mes</span><span class="v">' + mes.length + ' · ' + pesos(mes.reduce((t, o) => t + (Number(o.tarifa) || 0), 0)) + ' en envíos</span></div>' +
+    '<div class="line"><span class="k">Total pagado en envíos</span><span class="v">' + pesos(sum) + '</span></div></div>';
+  let day = '';
+  fin.forEach((o) => {
+    const t = lastAct(o), dk = new Date(t).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+    if (dk !== day) { day = dk; h += '<div class="subhead">' + esc(dk) + '</div>'; }
+    h += '<article class="order">' + head(o) + orderLines(o) + moneyRow(o) +
+      (o.estado === 'entregado' ? '<div class="status">Entregado por <b>' + esc(o.driverName || 'el repartidor') + '</b> · ' + new Date(o.entregadoEn || t).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) + '</div>' : '') + '</article>';
+  });
+  return h;
+}
 function renderShop() {
   const list = S.orders;
   const active = list.filter((o) => o.estado === 'abierto' || o.estado === 'asignado' || o.estado === 'recogido');
@@ -1024,9 +1042,16 @@ function renderShop() {
   const el = $('#shopList'); el.hidden = S.tab !== 'pedidos';
   if (S.tab === 'pedidos') {
     if (!S.openReady) el.innerHTML = emptyBox('Cargando pedidos', 'Un momento.');
-    else if (!list.length) el.innerHTML = emptyBox('Aún no hay pedidos', 'Cuando pidas una moto, aquí ves quién la tomó y en qué va.');
-    else el.innerHTML = '<h2 class="section">Mis pedidos</h2><div class="list">' + list.slice(0, 40).map(shopCard).join('') + '</div>';
+    else {
+      const cur = list.filter((o) => o.estado !== 'entregado' && o.estado !== 'cancelado');
+      el.innerHTML = cur.length ? '<h2 class="section">Mis pedidos</h2><div class="list">' + cur.map(shopCard).join('') + '</div>'
+        : emptyBox(list.length ? 'No tienes pedidos en curso' : 'Aún no hay pedidos', list.length ? 'Tus pedidos terminados están en Historial.' : 'Cuando generes un pedido, aquí ves quién lo tomó y en qué va.');
+    }
   }
+  { let hv = $('#shopHist');
+    if (!hv) { hv = document.createElement('div'); hv.id = 'shopHist'; hv.className = 'stack'; el.parentNode.insertBefore(hv, el.nextSibling); }
+    hv.hidden = S.tab !== 'historial';
+    if (S.tab === 'historial') hv.innerHTML = !S.openReady ? emptyBox('Cargando historial', 'Un momento.') : histHtml(list); }
   { const mn = $('#minNote'); mn.hidden = !(isCli(S.profile) && S.minOffer); mn.textContent = 'Nadie tomó tu oferta de ' + pesos(S.minOffer) + '. Pon ' + pesos(S.minOffer) + ' o más para intentar de nuevo.'; $('#o-tarifa').min = isCli(S.profile) && S.minOffer ? String(S.minOffer) : '1'; }
   { const cli = isCli(S.profile); $('#cliPay').hidden = !cli; $('#cliQuien').hidden = !cli; $('#fProd').hidden = !cli; $('#paySum').hidden = !cli; $('#o-cobro').closest('.field').hidden = cli; $('#orderForm .pair').style.gridTemplateColumns = cli ? '1fr' : '';
     $('label[for=o-tarifa]').textContent = cli ? 'Oferta por el mandadito' : 'Pago al repartidor'; $('#o-tarifa').placeholder = cli ? '$ cuánto ofreces pagar por el mandadito' : '$ envío';
@@ -1035,7 +1060,7 @@ function renderShop() {
     if (box) box.hidden = cli; pk.required = !cli;
     if (pf) { pf.hidden = !cli; ['p-calle', 'p-col', 'p-ciudad', 'p-mun'].forEach((i) => { $('#' + i).required = cli; }); } }
   if (!isCli(S.profile) && !$('#o-pick').value && S.addr && document.activeElement !== $('#o-pick')) $('#o-pick').value = S.addr;
-  return [{ id: 'nuevo', label: 'Nuevo pedido' }, { id: 'pedidos', label: 'Mis pedidos', badge: active.length }];
+  return [{ id: 'nuevo', label: 'Nuevo pedido' }, { id: 'pedidos', label: 'Mis pedidos', badge: active.length }, { id: 'historial', label: 'Historial' }];
 }
 
 function acceptBtn(o, busy) {
