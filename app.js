@@ -311,6 +311,10 @@ async function resetPass() {
   catch (err) { S.authErr = authMsg(err); showErr(); }
 }
 async function doSignOut() {
+  if (S.role === 'rider' && S.myOrders.some((o) => o.driverId === S.uid && (o.estado === 'asignado' || o.estado === 'recogido'))) {
+    toast('Tienes un pedido activo. Termínalo, o repórtalo con "Tengo un problema", antes de cerrar sesión.');
+    return;
+  }
   stopAll(); resetData();
   try { await signOut(auth); } catch (e) {}
   $('#a-pass').value = '';
