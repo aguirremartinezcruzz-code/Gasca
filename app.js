@@ -61,7 +61,7 @@ function resetData() {
   Object.assign(S, {
     profile: null, profileReady: false, role: null, name: '', addr: '', myAprob: null, aprReady: false, fotos: {},
     consent: false, verEdit: false, uploading: {}, perm: false, dbErr: false, tab: '',
-    incs: [], incReady: false, incMine: new Set(), regRead: false, regOk: false, regTop: 0, codes: {}, orders: [], openOrders: [], myOrders: [], known: new Set(), openReady: false, prev: new Map(),
+    incs: [], incReady: false, ofertas: [], ofKnown: null, incMine: new Set(), regRead: false, regOk: false, regTop: 0, codes: {}, orders: [], openOrders: [], myOrders: [], known: new Set(), openReady: false, prev: new Map(),
     wallet: null, walletReady: false, movs: [], recargas: [], pago: '', pagoDirty: false,
     users: [], aprobs: {}, wallets: {}, presence: {}, review: null, revPhotos: null, suspId: null, motivo: '',
     online: false, queue: [], ignored: new Set(), sheetId: null, sheetTaken: null, sheetKey: '',
@@ -420,7 +420,9 @@ function startRole() {
     listen(roleUnsubs, query(collection(db, 'movs'), where('driverId', '==', S.uid)), (snap) => { S.movs = snap.docs.map((d) => d.data()); render(); });
     listen(roleUnsubs, query(collection(db, 'recargas'), where('driverId', '==', S.uid)), (snap) => { S.recargas = snap.docs.map((d) => d.data()).filter((r) => r && r.id && r.estado); render(); });
     listen(roleUnsubs, doc(db, 'config', 'pago'), (s) => { S.pago = (s.exists() && s.data().texto) || ''; render(); });
+    listen(roleUnsubs, query(collection(db, 'ofertas'), where('driverId', '==', S.uid)), onOfertas);
   } else {
+    listen(roleUnsubs, query(collection(db, 'ofertas'), where('shopId', '==', S.uid)), onOfertas);
     listen(roleUnsubs, query(collection(db, 'orders'), where('shopId', '==', S.uid)), onShopOrders);
     listen(roleUnsubs, query(collection(db, 'codes'), where('shopId', '==', S.uid)), (snap) => { const c = {}; snap.docs.forEach((d) => { const v = d.data(); if (v && v.codigo) c[d.id] = v.codigo; }); S.codes = c; render(); });
   }
@@ -443,7 +445,56 @@ function onMyOrders(snap) {
     if (now && now.estado === 'cancelado') { beep([440, 330]); toast('Soporte canceló el pedido ' + folio(o.id) + '.'); }
     else if (!now) { beep([440, 330]); toast('Soporte reasignó el pedido ' + folio(o.id) + ' a otro repartidor.'); }
   });
+  next.filter(act).forEach((o) => { if (!was.some((w) => w.id === o.id) && !S.busy.has(o.id) && S.openReady) { beep([660, 990]); toast('Aceptaron tu oferta de ' + pesos(o.tarifa) + '. Ve por el pedido ' + folio(o.id) + '.'); } });
   S.myOrders = next; mergeOrders(); syncSheet(); render();
+}
+function onOfertas(snap) {
+  const next = snap.docs.map((d) => d.data()).filter((x) => x && x.id && x.orderId);
+  if (S.ofKnown && S.role !== 'rider') next.forEach((x) => { if (x.estado === 'pendiente' && !S.ofKnown.has(x.id)) { beep([660, 880]); toast((x.driverName || 'Un repartidor') + ' pide ' + pesos(x.monto) + ' por tu pedido.'); } });
+  S.ofKnown = new Set(next.map((x) => x.id)); S.ofertas = next; render();
+}
+const myOferta = (oid) => S.ofertas.find((x) => x.id === oid + '_' + S.uid);
+async function counter(id, m) {
+  const o = byId(id);
+  if (!canAct() || view() !== 'rider' || !o || o.estado !== 'abierto' || S.busy.has('of' + id)) return;
+  if (!S.online) { toast('Conéctate para ofertar.'); return; }
+  if (saldoC() < m * COM_C) { toast('Tu saldo no alcanza para esa oferta. Recarga.'); S.tab = 'saldo'; render(); return; }
+  S.busy.add('of' + id); render();
+  try {
+    await setDoc(doc(db, 'ofertas', id + '_' + S.uid), { id: id + '_' + S.uid, orderId: id, shopId: o.shopId, driverId: S.uid, driverName: S.name || 'Repartidor', monto: m, estado: 'pendiente', creadoEn: Date.now() });
+    toast('Pediste ' + pesos(m) + '. Si te aceptan, el pedido es tuyo.');
+  } catch (e) { toast(e && e.code === 'permission-denied' ? 'No se pudo enviar la oferta. Avisa a la administración.' : 'No se pudo enviar la oferta. Intenta de nuevo.'); }
+  S.busy.delete('of' + id); render();
+}
+async function offerYes(oid) {
+  const of = S.ofertas.find((x) => x.id === oid), o = of && S.orders.find((x) => x.id === of.orderId);
+  if (!of || !o || o.estado !== 'abierto' || S.busy.has('oy' + oid)) { toast('Ese pedido ya no está disponible.'); return; }
+  S.busy.add('oy' + oid); render();
+  try {
+    const d = pdesc(o), rec = d.tipo && d.quien === 'r', cobro = Math.round((Number(o.cobro) - (rec ? Number(o.tarifa) : 0) + (rec ? Number(of.monto) : 0)) * 100) / 100;
+    const b = writeBatch(db);
+    b.update(doc(db, 'orders', o.id), { estado: 'asignado', driverId: of.driverId, driverName: of.driverName, asignadoEn: Date.now(), tarifa: of.monto, cobro });
+    b.update(doc(db, 'ofertas', oid), { estado: 'aceptada' });
+    await b.commit();
+    toast('Aceptaste la oferta de ' + of.driverName + '.');
+  } catch (e) { toast('No se pudo aceptar. Puede que otro repartidor ya tomó el pedido.'); }
+  S.busy.delete('oy' + oid); render();
+}
+async function offerNo(oid) {
+  if (S.busy.has('oy' + oid)) return;
+  try { await updateDoc(doc(db, 'ofertas', oid), { estado: 'rechazada' }); } catch (e) { toast('No se pudo rechazar. Intenta de nuevo.'); }
+}
+function offerBtns(o) {
+  const d = pdesc(o); if (!d.tipo || o.estado !== 'abierto') return '';
+  const mine = myOferta(o.id);
+  if (mine) return '<p class="paynote">' + (mine.estado === 'pendiente' ? 'Pediste <b>' + pesos(mine.monto) + '</b>. Esperando respuesta.' : mine.estado === 'rechazada' ? 'Tu oferta de ' + pesos(mine.monto) + ' no fue aceptada. Aún puedes aceptar ' + pesos(o.tarifa) + '.' : '') + '</p>';
+  const t = Number(o.tarifa), busy = S.busy.has('of' + o.id);
+  return '<p class="hint" style="margin:8px 0 4px">¿Muy poco? Pide más:</p><div class="actions">' + [5, 10].map((n) => '<button class="btn ghost" type="button" data-act="counter" data-id="' + esc(o.id) + '" data-m="' + (t + n) + '"' + (busy || !canAct() ? ' disabled' : '') + '>Pedir ' + pesos(t + n) + '</button>').join('') + '</div>';
+}
+function offersFor(o) {
+  const l = S.ofertas.filter((x) => x.orderId === o.id && x.estado === 'pendiente');
+  if (o.estado !== 'abierto' || !l.length) return '';
+  return '<div class="paynote"><b>Ofertas de repartidores</b>' + l.map((x) => '<div style="margin-top:8px"><b>' + esc(x.driverName) + '</b> pide <b>' + pesos(x.monto) + '</b> por el mandadito<div class="actions" style="margin-top:6px"><button class="btn ghost small" type="button" data-act="of-no" data-oid="' + esc(x.id) + '">Rechazar</button><button class="btn primary small" type="button" data-act="of-yes" data-oid="' + esc(x.id) + '"' + (S.busy.has('oy' + x.id) ? ' disabled' : '') + '>Aceptar ' + pesos(x.monto) + '</button></div></div>').join('') + '</div>';
 }
 function onOpenOrders(snap) {
   const open = orderDocs(snap), fresh = [];
@@ -764,7 +815,7 @@ function renderSheet(force) {
     '<div class="cash">' + (Number(o.cobro) > 0 ? 'Cobrar <b>' + pesos(o.cobro) + '</b>' : 'Sin cobro') + '</div></div>' +
     '<div class="line"><span class="k">Recoger en</span><span class="v">' + esc(o.shop) + ' · ' + esc(o.pickup) + '</span></div>' +
     '<div class="line"><span class="k">Entregar en</span><span class="v">' + esc(o.dest) + '</span></div>' + payNote(o) +
-    '<div class="actions"><button class="btn ghost" type="button" data-act="ignore" data-id="' + esc(o.id) + '">Ignorar</button>' +
+    offerBtns(o) + '<div class="actions"><button class="btn ghost" type="button" data-act="ignore" data-id="' + esc(o.id) + '">Ignorar</button>' +
     '<button class="btn primary" type="button" data-act="accept" data-id="' + esc(o.id) + '"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Aceptando…' : 'Aceptar') + '</button></div></div>';
 }
 
@@ -803,7 +854,7 @@ function orderLines(o) {
     '<div class="line"><span class="k">Lleva</span><span class="v">' + esc(pdesc(o).t) + '</span></div>';
 }
 function moneyRow(o) {
-  return '<hr class="tear"><div class="money"><div class="fare">' + pesos(o.tarifa) + '<small>envío</small></div>' +
+  return '<hr class="tear"><div class="money"><div class="fare">' + pesos(o.tarifa) + '<small>' + (pdesc(o).tipo ? 'ofrecen por el mandadito' : 'envío') + '</small></div>' +
     '<div class="cash">' + (Number(o.cobro) > 0 ? 'Cobrar <b>' + pesos(o.cobro) + '</b>' : 'Sin cobro') + '</div></div>';
 }
 const head = (o) => '<div class="head"><span class="folio">' + folio(o.id) + '</span><span class="chip ' + esc(o.estado) + '">' + LABEL[o.estado] + '</span><span class="ago">' + ago(o.creadoEn) + '</span></div>';
@@ -872,7 +923,7 @@ function shopCard(o) {
       ? '<div class="actions"><button class="btn ghost small" type="button" data-act="cancel-no">Conservar</button><button class="btn danger small" type="button" data-act="cancel-yes" data-id="' + esc(o.id) + '">Sí, cancelar</button></div>'
       : '<div class="actions"><button class="btn ghost small" type="button" data-act="cancel" data-id="' + esc(o.id) + '"' + (S.busy.has(o.id) ? ' disabled' : '') + '>Cancelar pedido</button></div>';
   }
-  return '<article class="order">' + head(o) + orderLines(o) + moneyRow(o) + sendNote(o) + s + act + '</article>';
+  return '<article class="order">' + head(o) + orderLines(o) + moneyRow(o) + sendNote(o) + offersFor(o) + s + act + '</article>';
 }
 function renderShop() {
   const list = S.orders;
@@ -907,7 +958,7 @@ function availCard(o) {
     '<div class="line"><span class="k">Lleva</span><span class="v">' + esc(pdesc(o).t) + '</span></div>' +
     moneyRow(o) + payNote(o) +
     '<p class="hint">Comisión de ' + cents(comC(o)) + ' (13%) al entregar.</p>' +
-    '<div class="actions">' + acceptBtn(o, S.busy.has(o.id)) + '</div></article>';
+    '<div class="actions">' + acceptBtn(o, S.busy.has(o.id)) + '</div>' + offerBtns(o) + '</article>';
 }
 function tripCard(o) {
   const wa = waUrl(o.tel), busy = S.busy.has(o.id);
@@ -1281,6 +1332,9 @@ document.addEventListener('click', (e) => {
   else if (act === 'cancel-no') { S.cancelId = null; render(); }
   else if (act === 'cancel-yes') cancelOrder(id);
   else if (act === 'accept') { ensureAudio(); accept(id); }
+  else if (act === 'counter') { ensureAudio(); counter(id, Number(b.getAttribute('data-m'))); }
+  else if (act === 'of-yes') offerYes(b.getAttribute('data-oid'));
+  else if (act === 'of-no') offerNo(b.getAttribute('data-oid'));
   else if (act === 'ignore') { S.ignored.add(id); S.queue = S.queue.filter((x) => x !== id); S.sheetId = null; clearTimeout(S.sheetT); syncSheet(); }
   else if (act === 'recharge-toggle') { S.rechargeOpen = !S.rechargeOpen; render(); }
   else if (act === 'amt') { $('#r-monto').value = b.getAttribute('data-v'); }
