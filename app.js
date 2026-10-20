@@ -223,6 +223,7 @@ const af = $('#authForm');
 })();
 const roleVal = () => (af.elements.role && af.elements.role.value) || '';
 function setMode(m) {
+  if (m === 'signup' && S.authMode !== 'signup') [...af.querySelectorAll('input[name=role]')].forEach((r) => { r.checked = false; });
   S.authMode = m; S.authErr = '';
   const su = m === 'signup', ow = m === 'owner', pr = m === 'profile', form = su || pr;
   $('#authTitle').textContent = { login: 'Entrar', signup: 'Crear cuenta', owner: 'Dueño', profile: 'Completa tu cuenta' }[m];
@@ -2099,3 +2100,43 @@ function delivNotice(o) {
   clearTimeout(delivT); delivT = setTimeout(() => d.classList.remove('on'), 7000);
   try { buzz(); } catch (e) {}
 }
+
+/* ---------- pantalla "Crear cuenta": elegir quién eres, más llamativa ---------- */
+(function () {
+  const fs = document.getElementById('authRoles'); if (!fs) return;
+  const ICON = { shop: '🏪', rider: '🛵', cliente: '📦' };
+  const COLOR = { shop: '#f6b400', rider: '#1f9d55', cliente: '#2b7de9' };
+  const LEDE = { shop: 'Perfecto. Registra tu negocio para pedir motos.', rider: 'Genial. Vamos a registrarte como repartidor.', cliente: 'Listo. Vamos a crear tu cuenta para enviar.' };
+  const st = document.createElement('style');
+  st.textContent = '#authRoles{grid-template-columns:1fr!important;gap:12px!important}#authRoles .role{display:block}#authRoles .card-r{display:flex!important;flex-direction:column;justify-content:center;position:relative;padding:18px 18px 18px 84px!important;min-height:88px;border-radius:20px!important;border:2px solid var(--line,#d5dbe3)!important;background:#fff;box-shadow:0 3px 10px rgba(20,30,45,.08);transition:transform .15s,box-shadow .15s}' +
+    '#authRoles .card-r:active{transform:scale(.98)}#authRoles .card-r b{font-size:21px}#authRoles .card-r small{font-size:15px}' +
+    '#authRoles .rl-ic{position:absolute;left:16px;top:50%;transform:translateY(-50%);width:54px;height:54px;border-radius:16px;display:grid;place-items:center;font-size:30px}' +
+    '#authRoles input:checked+.card-r{border-color:var(--rc,#f6b400)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--rc,#f6b400) 30%,transparent)}' +
+    '#authRoles .rl-gone{display:none!important}#authRoles .role{animation:rlin .35s ease both}#authRoles .role:nth-of-type(2){animation-delay:.07s}#authRoles .role:nth-of-type(3){animation-delay:.14s}@keyframes rlin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}' +
+    '#rlChange{display:none;margin:0;text-align:left;background:none;border:0;font-weight:700;font-size:16px;text-decoration:underline;padding:8px 0;color:inherit}.rl-chosen #rlChange{display:inline-block}' +
+    '.rl-pick #fName,.rl-pick #fAddr,.rl-pick #fTel,.rl-pick #fEmail,.rl-pick #fPass,.rl-pick #authHint,.rl-pick #authBtn{display:none!important}' +
+    '#authForm.rl-pick #rlWait{display:block}#rlWait{display:none;text-align:center;font-weight:700;opacity:.65;margin:6px 0}@media (prefers-reduced-motion:reduce){#authRoles .role{animation:none}}';
+  document.head.appendChild(st);
+  fs.insertAdjacentHTML('beforeend', '<button type="button" id="rlChange">← Cambiar opción</button>');
+  fs.insertAdjacentHTML('afterend', '<p id="rlWait">👆 Toca una opción para continuar</p>');
+  fs.querySelectorAll('label.role').forEach((l) => {
+    const v = l.querySelector('input').value, c = COLOR[v] || '#f6b400', card = l.querySelector('.card-r');
+    card.style.setProperty('--rc', c); l.style.setProperty('--rc', c);
+    if (!card.querySelector('.rl-ic')) card.insertAdjacentHTML('afterbegin', '<span class="rl-ic" style="background:color-mix(in srgb,' + c + ' 22%,#fff)" aria-hidden="true">' + (ICON[v] || '🛵') + '</span>');
+  });
+  let lastMode = '';
+  function sync() {
+    const mode = S.authMode, on = mode === 'signup' || mode === 'profile';
+    const v = roleVal();
+    af.classList.toggle('rl-pick', on && !v);
+    fs.classList.toggle('rl-chosen', on && !!v);
+    fs.querySelectorAll('label.role').forEach((l) => l.classList.toggle('rl-gone', on && !!v && l.querySelector('input').value !== v));
+    if (on) { const lede = $('#authLede'); lede.textContent = v ? LEDE[v] : 'Elige cómo quieres usar Gasca. Solo toma un minuto.'; }
+  }
+  document.getElementById('rlChange').addEventListener('click', () => {
+    [...af.querySelectorAll('input[name=role]')].forEach((r) => { r.checked = false; });
+    setMode(S.authMode); sync();
+  });
+  af.addEventListener('change', () => setTimeout(sync, 0));
+  setInterval(sync, 300);
+})();
