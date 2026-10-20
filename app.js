@@ -1915,3 +1915,12 @@ function cliSum() {
   }, true);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { document.title = baseTitle; ensureAudio(); } });
 })();
+
+/* nombre y WhatsApp del cliente van dentro de "Datos de entrega" */
+(function () {
+  const c = document.getElementById('o-cliente'), t = document.getElementById('o-tel'), calle = document.getElementById('o-calle');
+  if (!c || !t || !calle) return;
+  const head = calle.closest('.field').previousElementSibling; // título "Datos de entrega"
+  if (!head || !head.classList.contains('sec-h')) return;
+  head.after(c.closest('.field'), t.closest('.field'));
+})();
