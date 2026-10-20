@@ -1814,3 +1814,50 @@ function cliSum() {
   st.textContent = '.tabs-in[data-n="4"] .tab{font-size:14px;padding-inline:4px;gap:5px;white-space:nowrap}.tabs-in[data-n="4"] .badge{min-width:18px;height:18px;font-size:11px;padding:0 4px}';
   document.head.appendChild(st);
 })();
+
+/* ---------- alerta fuerte, repetida, y modo "al pendiente" ---------- */
+(function () {
+  let lastSheet = null, ringT = null, keep = null, titleT = null;
+  const baseTitle = document.title;
+  function ring() { ensureAudio(); beep([988, 1319, 988, 1319]); buzz(); }
+  function notify(txt) {
+    try {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      const opts = { body: txt, tag: 'gasca-pedido', renotify: true, vibrate: [300, 150, 300, 150, 300], icon: 'icon-192.png' };
+      if (navigator.serviceWorker && navigator.serviceWorker.ready) navigator.serviceWorker.ready.then((r) => r.showNotification('🛵 Gasca: pedido nuevo', opts)).catch(() => { try { new Notification('🛵 Gasca: pedido nuevo', opts); } catch (e) {} });
+      else new Notification('🛵 Gasca: pedido nuevo', opts);
+    } catch (e) {}
+  }
+  function startKeep() {
+    try {
+      ensureAudio();
+      if (keep || !S.ac) return;
+      const o = S.ac.createOscillator(), g = S.ac.createGain();
+      g.gain.value = 0.00001; o.frequency.value = 30; o.connect(g); g.connect(S.ac.destination); o.start();
+      keep = o;
+    } catch (e) {}
+  }
+  function stopKeep() { try { if (keep) keep.stop(); } catch (e) {} keep = null; }
+  setInterval(() => {
+    const on = !!S.online && view() === 'rider';
+    if (on) startKeep(); else stopKeep();
+    const cur = on ? S.sheetId : null;
+    if (cur && cur !== lastSheet) {
+      ring(); clearInterval(ringT); ringT = setInterval(() => { if (S.sheetId) ring(); else { clearInterval(ringT); ringT = null; } }, 3000);
+      if (document.hidden) {
+        notify('Toca para ver el pedido y aceptarlo.');
+        clearInterval(titleT); let k = 0;
+        titleT = setInterval(() => { document.title = (k++ % 2 ? baseTitle : '🔔 ¡PEDIDO NUEVO!'); if (!document.hidden || k > 60) { clearInterval(titleT); document.title = baseTitle; } }, 800);
+      }
+    }
+    if (!cur && ringT) { clearInterval(ringT); ringT = null; }
+    lastSheet = cur;
+  }, 1000);
+  // pedir permiso de avisos con un toque del repartidor (el navegador lo exige)
+  document.addEventListener('click', (e) => {
+    try {
+      if (e.target.closest && e.target.closest('[data-act="online"]') && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+    } catch (er) {}
+  }, true);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { document.title = baseTitle; ensureAudio(); } });
+})();
