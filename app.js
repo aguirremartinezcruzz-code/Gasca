@@ -438,7 +438,7 @@ function queueOpen() {
 function startAdmin() {
   listen(unsubs, query(collection(db, 'orders'), orderBy('creadoEn', 'desc'), limit(200)), (snap) => { S.myOrders = orderDocs(snap); mergeOrders(); render(); });
   listen(unsubs, query(collection(db, 'users'), limit(500)), (snap) => { S.users = snap.docs.map((d) => d.data()).filter((u) => u && u.id && u.role && u.name); render(); });
-  listen(unsubs, query(collection(db, 'aprobaciones'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = d.data(); }); S.aprobs = m; render(); });
+  listen(unsubs, query(collection(db, 'aprobaciones'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = d.data(); }); S.aprobs = m; render(); assignRepNos(); });
   listen(unsubs, query(collection(db, 'recargas'), orderBy('creadoEn', 'desc'), limit(300)), (snap) => { S.recargas = snap.docs.map((d) => d.data()).filter((r) => r && r.id && r.estado); render(); });
   listen(unsubs, query(collection(db, 'wallets'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = d.data(); }); S.wallets = m; render(); });
   listen(unsubs, query(collection(db, 'movs'), orderBy('creadoEn', 'desc'), limit(1000)), (snap) => { S.movs = snap.docs.map((d) => d.data()); render(); });
@@ -648,13 +648,29 @@ async function openReview(id) {
     if (S.review === id) { S.revPhotos = m; render(); }
   } catch (e) { if (S.review === id) { S.revPhotos = {}; render(); } toast('No se pudieron cargar las fotos.'); }
 }
+function repTag(id) { const n = (S.aprobs[id] || {}).repNo; return n ? 'R-' + String(n).padStart(3, '0') + ' · ' : ''; }
+function nextRepNo() { let m = 0; Object.keys(S.aprobs).forEach((k) => { const n = S.aprobs[k] && S.aprobs[k].repNo; if (n > m) m = n; }); return m + 1; }
+async function assignRepNos() {
+  if (!S.isAdmin || S.repBusy) return;
+  const miss = S.users.filter((u) => u.role === 'rider' && S.aprobs[u.id] && S.aprobs[u.id].estado === 'aprobado' && !S.aprobs[u.id].repNo);
+  if (!miss.length) return;
+  S.repBusy = true;
+  try {
+    let n = nextRepNo();
+    for (const u of miss.sort((a, b) => (a.creadoEn || 0) - (b.creadoEn || 0))) { await setDoc(doc(db, 'aprobaciones', u.id), { repNo: n }, { merge: true }); n++; }
+  } catch (e) {}
+  S.repBusy = false;
+}
 async function resolveAlta(id, ok, motivo) {
   const k = 'al' + id;
   if (!S.isAdmin || S.busy.has(k)) return;
   if (!ok && !motivo) { toast('Escribe el motivo del rechazo.'); return; }
   S.busy.add(k); render();
   try {
-    await setDoc(doc(db, 'aprobaciones', id), { id, estado: ok ? 'aprobado' : 'rechazado', motivo: ok ? '' : motivo, en: Date.now(), por: S.uid });
+    const prev = S.aprobs[id] || {}, usr = S.users.find((x) => x.id === id);
+    const data = { id, estado: ok ? 'aprobado' : 'rechazado', motivo: ok ? '' : motivo, en: Date.now(), por: S.uid };
+    if (prev.repNo) data.repNo = prev.repNo; else if (ok && usr && usr.role === 'rider') data.repNo = nextRepNo();
+    await setDoc(doc(db, 'aprobaciones', id), data);
     S.review = null; S.revPhotos = null; S.motivo = ''; S.suspId = null;
     toast(ok ? 'Cuenta aprobada.' : 'Cuenta rechazada.');
   } catch (e) { toast('No se pudo guardar. Intenta de nuevo.'); }
@@ -955,7 +971,7 @@ function renderMonitor() {
     else if (isHere(u.id)) { st = 'Conectado, sin recibir pedidos'; cls = ''; rank = 2; }
     else { st = 'Sin conexión'; cls = ''; rank = 3; }
     const sal = S.wallets[u.id] ? cents(S.wallets[u.id].saldoC) : '$0';
-    return { rank, html: prRow(u.name, st, cls, 'Saldo ' + sal + ' · ' + hoy + ' entregas hoy · ' + (last ? 'última actividad ' + ago(last) : 'sin viajes todavía') + ' · se unió ' + ago(u.creadoEn)) };
+    return { rank, html: prRow(repTag(u.id) + u.name, st, cls, 'Saldo ' + sal + ' · ' + hoy + ' entregas hoy · ' + (last ? 'última actividad ' + ago(last) : 'sin viajes todavía') + ' · se unió ' + ago(u.creadoEn)) };
   }).sort((a, b) => a.rank - b.rank);
   h += '<div class="subhead">Repartidores (' + riders.length + ')</div>';
   h += rr.length ? rr.map((x) => x.html).join('') : emptyBox('Nadie se ha dado de alta', 'Cuando un repartidor cree su cuenta, aparece aquí.');
@@ -1009,7 +1025,7 @@ function renderAltas() {
   h += '<div class="subhead">Aprobados (' + apr.length + ')</div>';
   h += apr.length ? apr.map((x) => {
     const u = x.u, a = S.aprobs[u.id] || {};
-    return '<div class="pr"><div class="t"><b>' + esc(u.name) + '</b><span class="chip entregado">Aprobado</span></div><small>' + esc(ROLE_LBL[u.role] || '') + ' · aprobado ' + ago(a.en || u.creadoEn) + '</small>' +
+    return '<div class="pr"><div class="t"><b>' + esc(repTag(u.id) + u.name) + '</b><span class="chip entregado">Aprobado</span></div><small>' + esc(ROLE_LBL[u.role] || '') + ' · aprobado ' + ago(a.en || u.creadoEn) + '</small>' +
       (S.suspId === u.id
         ? '<div class="actions"><button class="btn ghost small" type="button" data-act="susp-no">Conservar</button><button class="btn danger small" type="button" data-act="susp-yes" data-id="' + esc(u.id) + '">Sí, suspender</button></div>'
         : '<div class="actions"><button class="btn ghost small" type="button" data-act="susp" data-id="' + esc(u.id) + '">Suspender</button></div>') + '</div>';
@@ -1097,7 +1113,7 @@ function render() {
   if (v === 'owner') $('#ownerMail').textContent = 'Correo: ' + S.email;
   const who = $('#who');
   who.hidden = !S.user || v === 'loading';
-  if (S.user) who.textContent = v === 'admin' ? 'Dueño' : (S.name ? ({ shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + S.name : 'Salir');
+  if (S.user) who.textContent = v === 'admin' ? 'Dueño' : (S.name ? ({ shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + (S.role === 'rider' && S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') + ' · ' : '') + S.name : 'Salir');
   renderBanner();
   if (v !== 'rider') { S.sheetId = null; if (!$('#sheet').hidden) { $('#sheet').hidden = true; S.sheetKey = ''; } }
   let tabs = null;
