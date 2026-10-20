@@ -253,7 +253,7 @@ function setMode(m) {
     if (m === 'login') $('#a-email').placeholder = 'correo o teléfono de 10 dígitos'; else $('#a-email').placeholder = 'tucorreo@ejemplo.com'; }
   const link = (act, txt) => '<button type="button" data-act="' + act + '">' + txt + '</button>';
   $('#authLinks').innerHTML = {
-    login: link('mode-signup', 'Crear cuenta') + link('reset', 'Olvidé mi contraseña') + link('mode-owner', 'Soy el dueño'),
+    login: link('mode-signup', 'Crear cuenta') + link('reset', 'Olvidé mi contraseña') + link('mode-owner', 'Administración'),
     signup: link('mode-login', 'Ya tengo cuenta'),
     owner: link('mode-login', 'Volver') + link('reset', 'Olvidé mi contraseña'),
     profile: link('signout', 'Salir')
@@ -2139,4 +2139,48 @@ function delivNotice(o) {
   });
   af.addEventListener('change', () => setTimeout(sync, 0));
   setInterval(sync, 300);
+})();
+
+/* ---------- pantalla de bienvenida (primera pantalla) ---------- */
+(function () {
+  const va = document.getElementById('viewAuth'); if (!va) return;
+  const WC = { on: true };
+  const off = () => lsGet('gasca_nowelcome') === '1';
+  const cards = [['shop', '🏪', 'Para negocios', 'Soy tienda o restaurante', '#f6b400'], ['rider', '🛵', 'Repartidor', 'Recibo pedidos y acepto', '#1f9d55'], ['cliente', '📦', 'Para envíos personales', 'Quiero enviar algo', '#2b7de9']];
+  const st = document.createElement('style');
+  st.textContent = '#wcBox{display:none}.wc-on #wcBox{display:block}.wc-on #authTitle,.wc-on #authLede,.wc-on #authForm,.wc-on #authLinks,.wc-on #installHint{display:none!important}' +
+    '.wc-hero{background:linear-gradient(135deg,#f6b400,#ffd24d);border-radius:24px;padding:18px 18px 22px;text-align:center;color:#16202a;overflow:hidden;box-shadow:0 8px 22px rgba(246,180,0,.35);animation:wcin .5s ease both}.wc-hero h2{margin:6px 0 2px;font-size:30px;line-height:1.1}.wc-hero p{margin:0;font-weight:600;opacity:.8}' +
+    '.wc-road{position:relative;height:64px;margin:0 -18px 6px;overflow:hidden}.wc-road:after{content:"";position:absolute;left:0;right:0;bottom:6px;border-bottom:3px dashed rgba(22,32,42,.35)}.wc-ride{position:absolute;bottom:10px;left:0;animation:wcr 6s linear infinite}.wc-ride .dv-bike{animation:wcb 1s ease-in-out infinite alternate}.wc-ride .dv-wheel{animation:wcw .5s linear infinite}' +
+    '@keyframes wcr{from{transform:translateX(-110px)}to{transform:translateX(420px)}}@keyframes wcb{from{transform:translateY(0)}to{transform:translateY(-2px)}}@keyframes wcw{to{transform:rotate(360deg)}}@keyframes wcin{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}' +
+    '.wc-q{margin:22px 0 10px;font-size:22px}.wc-card{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:#fff;border:2px solid var(--line,#d5dbe3);border-radius:20px;padding:14px 16px;margin-bottom:12px;box-shadow:0 3px 10px rgba(20,30,45,.08);font:inherit;color:inherit;animation:wcin .45s ease both;transition:transform .12s}.wc-card:active{transform:scale(.98)}.wc-card:nth-of-type(2){animation-delay:.08s}.wc-card:nth-of-type(3){animation-delay:.16s}' +
+    '.wc-ic{flex:none;width:56px;height:56px;border-radius:16px;display:grid;place-items:center;font-size:30px}.wc-card b{display:block;font-size:21px}.wc-card small{font-size:15px;opacity:.7}.wc-card i{margin-left:auto;font-style:normal;font-size:26px;opacity:.4}' +
+    '.wc-login{margin-top:6px;min-height:52px;font-size:17px}.wc-admin{display:block;margin:18px auto 4px;background:none;border:0;font-size:15px;font-weight:700;opacity:.6;padding:8px 14px;text-decoration:underline;color:inherit}#wcBack{display:none;margin:6px auto;background:none;border:0;font-weight:700;font-size:16px;text-decoration:underline;padding:8px;color:inherit}.wc-back #wcBack{display:block}@media (prefers-reduced-motion:reduce){.wc-ride,.wc-ride .dv-bike,.wc-ride .dv-wheel,.wc-hero,.wc-card{animation:none}}';
+  document.head.appendChild(st);
+  const box = document.createElement('div'); box.id = 'wcBox';
+  box.innerHTML = '<div class="wc-hero"><div class="wc-road"><div class="wc-ride">' + DELIV_SVG + '</div></div><h2>¡Bienvenido a Gasca!</h2><p>Entregas certificadas</p></div>' +
+    '<h3 class="wc-q">¿Cómo quieres usar Gasca?</h3>' +
+    cards.map((c) => '<button type="button" class="wc-card" data-wc="' + c[0] + '"><span class="wc-ic" style="background:color-mix(in srgb,' + c[4] + ' 22%,#fff)" aria-hidden="true">' + c[1] + '</span><span><b>' + c[2] + '</b><small>' + c[3] + '</small></span><i aria-hidden="true">›</i></button>').join('') +
+    '<button type="button" class="btn ghost block wc-login" data-wc="login">Ya tengo cuenta · Entrar</button><button type="button" class="wc-admin" data-wc="owner">Administración</button>';
+  document.getElementById('authLede').after(box);
+  const back = document.createElement('button'); back.type = 'button'; back.id = 'wcBack'; back.textContent = '← Volver al inicio';
+  document.getElementById('authLinks').after(back);
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-wc]'); if (!b) return;
+    const v = b.getAttribute('data-wc'); WC.on = false;
+    if (v === 'login' || v === 'owner') setMode(v);
+    else { setMode('signup'); const r = af.querySelector('input[name=role][value=' + v + ']'); if (r) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); } }
+    sync(); try { window.scrollTo(0, 0); } catch (er) {}
+  });
+  back.addEventListener('click', () => { WC.on = true; setMode('login'); sync(); });
+  let hadUser = false;
+  function sync() {
+    const u = !!S.user;
+    if (hadUser && !u) { WC.on = true; if (S.authMode !== 'login') setMode('login'); }
+    hadUser = u;
+    const isAuth = view() === 'auth' && S.authMode === 'login' || (view() === 'auth' && WC.on);
+    const show = !off() && WC.on && view() === 'auth' && S.authMode === 'login';
+    va.classList.toggle('wc-on', show);
+    va.classList.toggle('wc-back', !off() && !WC.on && view() === 'auth' && S.authMode !== 'profile');
+  }
+  setInterval(sync, 250);
 })();
