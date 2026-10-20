@@ -2154,7 +2154,7 @@ function delivNotice(o) {
     '@keyframes wcr{from{transform:translateX(-110px)}to{transform:translateX(420px)}}@keyframes wcb{from{transform:translateY(0)}to{transform:translateY(-2px)}}@keyframes wcw{to{transform:rotate(360deg)}}@keyframes wcin{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}' +
     '.wc-q{margin:22px 0 10px;font-size:22px}.wc-card{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:#fff;border:2px solid var(--line,#d5dbe3);border-radius:20px;padding:14px 16px;margin-bottom:12px;box-shadow:0 3px 10px rgba(20,30,45,.08);font:inherit;color:inherit;animation:wcin .45s ease both;transition:transform .12s}.wc-card:active{transform:scale(.98)}.wc-card:nth-of-type(2){animation-delay:.08s}.wc-card:nth-of-type(3){animation-delay:.16s}' +
     '.wc-ic{flex:none;width:56px;height:56px;border-radius:16px;display:grid;place-items:center;font-size:30px}.wc-card b{display:block;font-size:21px}.wc-card small{font-size:15px;opacity:.7}.wc-card i{margin-left:auto;font-style:normal;font-size:26px;opacity:.4}' +
-    '.wc-login{margin-top:6px;min-height:52px;font-size:17px}.wc-admin{display:block;margin:18px auto 4px;background:none;border:0;font-size:15px;font-weight:700;opacity:.6;padding:8px 14px;text-decoration:underline;color:inherit}#wcBack{display:none;margin:6px auto;background:none;border:0;font-weight:700;font-size:16px;text-decoration:underline;padding:8px;color:inherit}.wc-back #wcBack{display:block}@media (prefers-reduced-motion:reduce){.wc-ride,.wc-ride .dv-bike,.wc-ride .dv-wheel,.wc-hero,.wc-card{animation:none}}';
+    '.wc-login{margin-top:6px;min-height:56px;font-size:18px;font-weight:800;background:#16202a!important;color:#ffc61a!important;border:0!important;border-radius:18px;box-shadow:0 6px 16px rgba(22,32,42,.35)}.wc-login:active{transform:scale(.98)}.wc-admin{display:block;margin:18px auto 4px;background:none;border:0;font-size:15px;font-weight:700;opacity:.6;padding:8px 14px;text-decoration:underline;color:inherit}#wcBack{display:none;margin:6px auto;background:none;border:0;font-weight:700;font-size:16px;text-decoration:underline;padding:8px;color:inherit}.wc-back #wcBack{display:block}@media (prefers-reduced-motion:reduce){.wc-ride,.wc-ride .dv-bike,.wc-ride .dv-wheel,.wc-hero,.wc-card{animation:none}}';
   document.head.appendChild(st);
   const box = document.createElement('div'); box.id = 'wcBox';
   box.innerHTML = '<div class="wc-hero"><div class="wc-road"><div class="wc-ride">' + DELIV_SVG + '</div></div><h2>¡Bienvenido a Gasca!</h2><p>Entregas certificadas</p></div>' +
@@ -2171,7 +2171,7 @@ function delivNotice(o) {
     else { setMode('signup'); const r = af.querySelector('input[name=role][value=' + v + ']'); if (r) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); } }
     sync(); try { window.scrollTo(0, 0); } catch (er) {}
   });
-  back.addEventListener('click', () => { WC.on = true; setMode('login'); sync(); });
+  back.addEventListener('click', () => { WC.on = true; setMode('login'); sync(); try { window.scrollTo(0, 0); } catch (er) {} });
   let hadUser = false;
   function sync() {
     const u = !!S.user;
@@ -2179,6 +2179,7 @@ function delivNotice(o) {
     hadUser = u;
     const isAuth = view() === 'auth' && S.authMode === 'login' || (view() === 'auth' && WC.on);
     const show = !off() && WC.on && view() === 'auth' && S.authMode === 'login';
+    if (show && !va.classList.contains('wc-on')) { try { window.scrollTo(0, 0); document.scrollingElement.scrollTop = 0; } catch (er) {} }
     va.classList.toggle('wc-on', show);
     va.classList.toggle('wc-back', !off() && !WC.on && view() === 'auth' && S.authMode !== 'profile');
   }
