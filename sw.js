@@ -1,6 +1,6 @@
 // Service worker mínimo: permite instalar la app y abrirla aunque la conexión sea mala.
-// Siempre intenta primero la red para que los cambios nuevos se vean enseguida.
-const CACHE = 'gasca-v2';
+// Siempre intenta primero la red (revisando que no haya versión nueva) para que los cambios se vean enseguida.
+const CACHE = 'gasca-v3';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'firebase-config.js', 'manifest.webmanifest', 'icon-192.png'];
 
 self.addEventListener('install', (e) => {
@@ -20,7 +20,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // Firebase y fuentes van directo a la red
   e.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' })
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
