@@ -1928,6 +1928,7 @@ function cliSum() {
 })();
 
 /* ---------- asistente paso a paso para generar pedidos ---------- */
+const WZ_POT = '<svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-5px"><circle cx="16" cy="6.5" r="2"/><path d="M4 23a12 12 0 0 1 24 0"/><path d="M2.5 23h27"/><path d="M5 27h22"/><path d="M9 17.5a8 8 0 0 1 5-4"/></svg>';
 const WZ = { step: 0, key: '', steps: [], all: [] };
 const wzOff = () => lsGet('gasca_nowiz') === '1';
 const wzF = (id) => { const e = document.getElementById(id); return e ? e.closest('.field') : null; };
@@ -1964,7 +1965,7 @@ function wzBuild() {
     { t: '🏠 ¿En qué dirección se entrega?', h: 'Mientras más claro, más rápido llega.', e: addr },
     { t: '✅ Revisa tu pedido', h: 'Si todo está bien, toca Generar pedido.', e: [sum, $('#paySum'), btn], last: true }
   ] : [
-    { t: '📦 ¿Qué se entrega?', h: 'Por ejemplo: 2 pizzas grandes y 1 refresco.', e: [wzF('o-desc'), $('#wzLast')] },
+    { t: '¿Qué se entrega?', ic: WZ_POT, h: 'Por ejemplo: 2 pizzas grandes y 1 refresco.', e: [wzF('o-desc'), $('#wzLast')] },
     { t: '🙋 ¿A quién se lo entregamos?', h: 'Nombre y WhatsApp de tu cliente. Si ya le has enviado antes, tócalo abajo.', e: who },
     { t: '🏠 ¿En qué dirección?', h: 'Mientras más claro, más rápido llega.', e: addr },
     { t: '💵 ¿Cuánto se cobra?', h: 'Si el cliente ya pagó, deja "Cobrar al cliente" vacío.', e: pay },
@@ -2049,7 +2050,7 @@ function wzSync() {
   WZ.all.forEach((x) => { if (x) x.classList.toggle('wz-off', st.e.indexOf(x) < 0); });
   $('#wzBar').style.width = Math.round(((WZ.step + 1) / n) * 100) + '%';
   $('#wzN').textContent = 'Paso ' + (WZ.step + 1) + ' de ' + n;
-  $('#wzTitle').textContent = st.t; $('#wzHint').textContent = st.h;
+  $('#wzTitle').innerHTML = (st.ic ? st.ic + ' ' : '') + esc(st.t); $('#wzHint').textContent = st.h;
   $('#wzBack').hidden = WZ.step === 0; $('#wzNext').hidden = !!st.last;
   const btn = $('#orderBtn'); if (!btn.disabled) btn.textContent = 'Generar pedido';
   if (WZ.dirty) {
