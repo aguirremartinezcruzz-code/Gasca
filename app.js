@@ -40,7 +40,7 @@ const S = {
   tab: '', orders: [], openOrders: [], myOrders: [], known: new Set(), openReady: false, prev: new Map(),
   wallet: null, walletReady: false, movs: [], recargas: [], pago: '', pagoDirty: false,
   users: [], aprobs: {}, wallets: {}, presence: {},
-  review: null, revPhotos: null, suspId: null, motivo: '',
+  review: null, revPhotos: null, suspId: null, delId: null, motivo: '',
   online: false, queue: [], ignored: new Set(), sheetId: null, sheetTaken: null, sheetT: null, sheetKey: '',
   rechargeOpen: false, cancelId: null, busy: new Set(), ac: null, wake: null
 };
@@ -63,7 +63,7 @@ function resetData() {
     consent: false, verEdit: false, uploading: {}, perm: false, dbErr: false, tab: '',
     incs: [], incReady: false, ofertas: [], ofKnown: null, minOffer: 0, incMine: new Set(), regRead: false, regOk: false, regTop: 0, codes: {}, orders: [], openOrders: [], myOrders: [], known: new Set(), openReady: false, prev: new Map(),
     wallet: null, walletReady: false, movs: [], recargas: [], pago: '', pagoDirty: false,
-    users: [], aprobs: {}, wallets: {}, presence: {}, review: null, revPhotos: null, suspId: null, motivo: '',
+    users: [], aprobs: {}, wallets: {}, presence: {}, review: null, revPhotos: null, suspId: null, delId: null, motivo: '',
     online: false, queue: [], ignored: new Set(), sheetId: null, sheetTaken: null, sheetKey: '',
     rechargeOpen: false, cancelId: null, busy: new Set()
   });
@@ -183,6 +183,7 @@ const telOf = (email) => String(email || '').endsWith(TEL_DOM) ? email.slice(0, 
 function safeImg(s) { return typeof s === 'string' && s.length < 260000 && /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(s) ? s : ''; }
 function personStatus(u, a) {
   const docsEn = (u && u.docsEn) || 0;
+  if (a && a.estado === 'eliminado') return 'eliminado';
   if (a && a.estado === 'aprobado') return 'aprobado';
   if (a && a.estado === 'rechazado' && (a.en || 0) >= docsEn) return 'rechazado';
   return docsEn ? 'revision' : 'incompleto';
@@ -201,6 +202,7 @@ function view() {
   const st = myStatus();
   if (st === 'cargando') return 'loading';
   if (st === 'perfil') return 'profile';
+  if (st === 'eliminado') { if (!S.byeT) { S.byeT = setTimeout(() => { S.byeT = null; toast('Tu cuenta fue dada de baja por la administración.'); doSignOut(); }, 300); } return 'loading'; }
   if (st !== 'aprobado') return 'verify';
   return S.role === 'shop' ? 'shop' : 'rider';
 }
@@ -1232,6 +1234,24 @@ function altaCard(u) {
     '<button class="btn primary small" type="button" data-act="alta-ok" data-id="' + esc(u.id) + '"' + (busy ? ' disabled' : '') + '>Aprobar</button></div></article>';
   return h;
 }
+function delConfirm(u) {
+  const w = S.wallets[u.id], c = w && (w.saldoC || 0);
+  return '<p class="hint"><b>¿Eliminar a ' + esc(u.name) + '?</b> Ya no podrá entrar a la app.' + (c > 0 ? ' Tiene saldo de ' + cents(c) + ': devuélveselo antes.' : '') + '</p><div class="actions"><button class="btn ghost small" type="button" data-act="del-no">Conservar</button><button class="btn danger small" type="button" data-act="del-yes" data-id="' + esc(u.id) + '">Sí, eliminar</button></div>';
+}
+async function setBaja(id, baja) {
+  const k = 'bj' + id;
+  if (!S.isAdmin || S.busy.has(k)) return;
+  S.busy.add(k); render();
+  try {
+    const prev = S.aprobs[id] || {};
+    const data = { id, estado: baja ? 'eliminado' : 'rechazado', motivo: baja ? 'Cuenta eliminada por la administración.' : 'Cuenta restaurada: vuelve a enviar tus documentos.', en: Date.now(), por: S.uid };
+    if (prev.repNo) data.repNo = prev.repNo;
+    await setDoc(doc(db, 'aprobaciones', id), data);
+    S.delId = null; S.suspId = null;
+    toast(baja ? 'Usuario eliminado.' : 'Usuario restaurado.');
+  } catch (e) { toast('No se pudo guardar. Intenta de nuevo.'); }
+  S.busy.delete(k); render();
+}
 function renderAltas() {
   const el = $('#adminAltas');
   if (document.activeElement && document.activeElement.id === 'a-motivo') return;
@@ -1247,13 +1267,18 @@ function renderAltas() {
     return '<div class="pr"><div class="t"><b>' + esc(repTag(u.id) + u.name) + '</b><span class="chip entregado">Aprobado</span></div><small>' + esc(roleLbl(u)) + ' · aprobado ' + ago(a.en || u.creadoEn) + '</small>' +
       (S.suspId === u.id
         ? '<div class="actions"><button class="btn ghost small" type="button" data-act="susp-no">Conservar</button><button class="btn danger small" type="button" data-act="susp-yes" data-id="' + esc(u.id) + '">Sí, suspender</button></div>'
-        : '<div class="actions"><button class="btn ghost small" type="button" data-act="susp" data-id="' + esc(u.id) + '">Suspender</button></div>') + '</div>';
+        : S.delId === u.id ? delConfirm(u)
+        : '<div class="actions"><button class="btn ghost small" type="button" data-act="susp" data-id="' + esc(u.id) + '">Suspender</button><button class="btn danger small" type="button" data-act="del" data-id="' + esc(u.id) + '">Eliminar</button></div>') + '</div>';
   }).join('') : '<p class="hint">Todavía no has aprobado a nadie.</p>';
   if (oth.length) {
     h += '<div class="subhead">Sin enviar o rechazados (' + oth.length + ')</div>' + oth.map((x) => {
       const a = S.aprobs[x.u.id];
-      return prRow(x.u.name, verLabel(x.st), '', esc(roleLbl(x.u)) + (x.st === 'rechazado' && a && a.motivo ? ' · ' + esc(a.motivo) : '') + ' · se unió ' + ago(x.u.creadoEn));
+      return prRow(x.u.name, verLabel(x.st), '', esc(roleLbl(x.u)) + (x.st === 'rechazado' && a && a.motivo ? ' · ' + esc(a.motivo) : '') + ' · se unió ' + ago(x.u.creadoEn)).replace(/<\/div>$/, S.delId === x.u.id ? delConfirm(x.u) + '</div>' : '<div class="actions"><button class="btn danger small" type="button" data-act="del" data-id="' + esc(x.u.id) + '">Eliminar</button></div></div>');
     }).join('');
+  }
+  const gone = all.filter((x) => x.st === 'eliminado');
+  if (gone.length) {
+    h += '<div class="subhead">Eliminados (' + gone.length + ')</div>' + gone.map((x) => '<div class="pr"><div class="t"><b>' + esc(repTag(x.u.id) + x.u.name) + '</b><span class="chip cancelado">Eliminado</span></div><small>' + esc(roleLbl(x.u)) + ' · ' + ago((S.aprobs[x.u.id] || {}).en) + '</small><div class="actions"><button class="btn ghost small" type="button" data-act="undel" data-id="' + esc(x.u.id) + '">Restaurar</button></div></div>').join('');
   }
   el.innerHTML = h;
 }
@@ -1449,6 +1474,10 @@ document.addEventListener('click', (e) => {
   else if (act === 'alta-no') resolveAlta(id, false, (S.motivo || '').trim());
   else if (act === 'susp') { S.suspId = id; render(); }
   else if (act === 'susp-no') { S.suspId = null; render(); }
+  else if (act === 'del') { S.delId = id; S.suspId = null; render(); }
+  else if (act === 'del-no') { S.delId = null; render(); }
+  else if (act === 'del-yes') setBaja(id, true);
+  else if (act === 'undel') setBaja(id, false);
   else if (act === 'susp-yes') resolveAlta(id, false, 'Cuenta suspendida por la administración.');
   else if (act === 'zoom') openZoom(b.getAttribute('src'));
   else if (act === 'picked') picked(id);
