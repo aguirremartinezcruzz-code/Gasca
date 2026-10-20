@@ -1739,3 +1739,9 @@ function cliSum() {
   document.head.appendChild(st);
 })();
 (function () { const h = document.querySelector('#shopNew h2.section'); if (h) h.textContent = 'Generar pedido'; })();
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '.top{flex-wrap:wrap;row-gap:10px}.who{order:3;flex:1 1 100%;max-width:100%!important;display:flex;align-items:center;gap:9px;text-align:left;white-space:normal!important;padding:8px 14px!important;border-radius:14px!important;font-size:14px;line-height:1.25}' +
+    '.who::before{content:"";flex:0 0 9px;height:9px;border-radius:50%;background:var(--green,#17803F)}.who::after{content:"Salir";margin-left:auto;padding-left:10px;font-size:13px;font-weight:700;color:var(--muted);text-decoration:underline}';
+  document.head.appendChild(st);
+})();
