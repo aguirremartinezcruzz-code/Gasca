@@ -75,7 +75,7 @@ function resetData() {
 function clearDom() {
   ['#viewVerify', '#shopList', '#riderHead', '#riderAvail', '#riderTrips', '#walletTop', '#walletList', '#adminMonitor', '#adminAltas', '#adminRecargas', '#adminSaldos', '#adminIncid', '#sheet']
     .forEach((s) => { const el = $(s); if (el) el.innerHTML = ''; });
-  ['#o-pick', '#p-calle', '#p-col', '#p-ciudad', '#p-mun', '#o-cliente', '#o-tel', '#o-dest', '#o-calle', '#o-num', '#o-int', '#o-col', '#o-ref', '#o-desc', '#o-cobro', '#o-tarifa', '#r-monto', '#a-pago', '#a-buscar']
+  ['#o-pick', '#o-prod', '#p-calle', '#p-col', '#p-ciudad', '#p-mun', '#o-cliente', '#o-tel', '#o-dest', '#o-calle', '#o-num', '#o-int', '#o-col', '#o-ref', '#o-desc', '#o-cobro', '#o-tarifa', '#r-monto', '#a-pago', '#a-buscar']
     .forEach((s) => { const el = $(s); if (el) el.value = ''; });
 }
 
@@ -763,17 +763,44 @@ function renderSheet(force) {
     '<div class="money"><div class="fare">' + pesos(o.tarifa) + '<small>por el envío</small></div>' +
     '<div class="cash">' + (Number(o.cobro) > 0 ? 'Cobrar <b>' + pesos(o.cobro) + '</b>' : 'Sin cobro') + '</div></div>' +
     '<div class="line"><span class="k">Recoger en</span><span class="v">' + esc(o.shop) + ' · ' + esc(o.pickup) + '</span></div>' +
-    '<div class="line"><span class="k">Entregar en</span><span class="v">' + esc(o.dest) + '</span></div>' +
+    '<div class="line"><span class="k">Entregar en</span><span class="v">' + esc(o.dest) + '</span></div>' + payNote(o) +
     '<div class="actions"><button class="btn ghost" type="button" data-act="ignore" data-id="' + esc(o.id) + '">Ignorar</button>' +
     '<button class="btn primary" type="button" data-act="accept" data-id="' + esc(o.id) + '"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Aceptando…' : 'Aceptar') + '</button></div></div>';
 }
 
 /* ---------- pantallas ---------- */
 const emptyBox = (title, text) => '<div class="empty"><b>' + esc(title) + '</b><span>' + esc(text) + '</span></div>';
+const DSEP = ' ¦';
+function pdesc(o) {
+  const d = String((o && o.desc) || ''), i = d.lastIndexOf(DSEP);
+  if (i < 0) return { t: d };
+  const m = d.slice(i + 2).split('|');
+  if (!/^[evp]$/.test(m[0] || '') || !/^[re]$/.test(m[2] || '')) return { t: d };
+  return { t: d.slice(0, i), tipo: m[0], prod: Number(m[1]) || 0, quien: m[2] };
+}
+function payNote(o) {
+  const d = pdesc(o); if (!d.tipo) return '';
+  const T = pesos(o.tarifa), P = pesos(d.prod), rec = d.quien === 'r';
+  let a = [];
+  if (d.tipo === 'v') a.push('<b>Paga ' + P + '</b> al vendedor al recoger.');
+  if (d.tipo === 'p') a.push('El producto ya está pagado: <b>no pagues ni cobres</b> el producto.');
+  if (d.tipo === 'v') a.push(rec ? '<b>Cobra ' + pesos(d.prod + Number(o.tarifa)) + '</b> al entregar (' + P + ' del producto + ' + T + ' de tu mandadito).' : '<b>Cobra ' + P + '</b> al entregar. Tu mandadito (' + T + ') te lo paga quien envía.');
+  else a.push(rec ? '<b>Cobra ' + T + '</b> al entregar (tu mandadito).' : 'Quien envía te paga <b>' + T + '</b> (tu mandadito). No cobres nada al entregar.');
+  return '<p class="paynote">' + a.join(' ') + '</p>';
+}
+function sendNote(o) {
+  const d = pdesc(o); if (!d.tipo) return '';
+  const T = pesos(o.tarifa), P = pesos(d.prod), rec = d.quien === 'r';
+  let t = '';
+  if (d.tipo === 'v') t = 'El repartidor te pagará <b>' + P + '</b> al recoger. Al entregar cobrará <b>' + pesos(Number(o.cobro)) + '</b>' + (rec ? ' (' + P + ' del producto + ' + T + ' del mandadito).' : ' (el producto). Tú pagas el mandadito (' + T + ').');
+  else if (d.tipo === 'p') t = 'El producto ya está pagado.' + (rec ? ' Quien recibe pagará ' + T + ' del mandadito.' : ' Tú pagas el mandadito (' + T + ') al repartidor.');
+  else t = rec ? 'Quien recibe pagará ' + T + ' del mandadito.' : 'Tú pagas el mandadito (' + T + ') al repartidor.';
+  return '<p class="paynote">' + t + '</p>';
+}
 function orderLines(o) {
   return '<div class="line"><span class="k">Cliente</span><span class="v">' + esc(o.cliente) + '</span></div>' +
     '<div class="line"><span class="k">Entregar en</span><span class="v">' + esc(o.dest) + '</span></div>' +
-    '<div class="line"><span class="k">Lleva</span><span class="v">' + esc(o.desc) + '</span></div>';
+    '<div class="line"><span class="k">Lleva</span><span class="v">' + esc(pdesc(o).t) + '</span></div>';
 }
 function moneyRow(o) {
   return '<hr class="tear"><div class="money"><div class="fare">' + pesos(o.tarifa) + '<small>envío</small></div>' +
@@ -845,7 +872,7 @@ function shopCard(o) {
       ? '<div class="actions"><button class="btn ghost small" type="button" data-act="cancel-no">Conservar</button><button class="btn danger small" type="button" data-act="cancel-yes" data-id="' + esc(o.id) + '">Sí, cancelar</button></div>'
       : '<div class="actions"><button class="btn ghost small" type="button" data-act="cancel" data-id="' + esc(o.id) + '"' + (S.busy.has(o.id) ? ' disabled' : '') + '>Cancelar pedido</button></div>';
   }
-  return '<article class="order">' + head(o) + orderLines(o) + moneyRow(o) + s + act + '</article>';
+  return '<article class="order">' + head(o) + orderLines(o) + moneyRow(o) + sendNote(o) + s + act + '</article>';
 }
 function renderShop() {
   const list = S.orders;
@@ -857,6 +884,9 @@ function renderShop() {
     else if (!list.length) el.innerHTML = emptyBox('Aún no hay pedidos', 'Cuando pidas una moto, aquí ves quién la tomó y en qué va.');
     else el.innerHTML = '<h2 class="section">Mis pedidos</h2><div class="list">' + list.slice(0, 40).map(shopCard).join('') + '</div>';
   }
+  { const cli = isCli(S.profile); $('#cliPay').hidden = !cli; $('#cliQuien').hidden = !cli; $('#paySum').hidden = !cli; $('#o-cobro').closest('.field').hidden = cli; $('#orderForm .pair').style.gridTemplateColumns = cli ? '1fr' : '';
+    $('label[for=o-tarifa]').textContent = cli ? 'Costo del mandadito' : 'Pago al repartidor'; $('#o-tarifa').placeholder = cli ? '$ lo que cuesta el mandadito' : '$ envío';
+    $('label[for=o-desc]').textContent = cli ? '¿Qué vas a enviar?' : 'Qué se entrega'; $('#o-desc').placeholder = cli ? 'Ej. Un martillo, zapatos escolares' : 'Ej. 2 pizzas grandes y 1 refresco'; }
   { const cli = isCli(S.profile), pk = $('#o-pick'), box = pk.closest('.field'), pf = $('#pickFields');
     if (box) box.hidden = cli; pk.required = !cli;
     if (pf) { pf.hidden = !cli; ['p-calle', 'p-col', 'p-ciudad', 'p-mun'].forEach((i) => { $('#' + i).required = cli; }); } }
@@ -874,8 +904,8 @@ function availCard(o) {
   return '<article class="order">' + head(o) +
     '<div class="line"><span class="k">Recoger en</span><span class="v">' + esc(o.shop) + ' · ' + esc(o.pickup) + '</span></div>' +
     '<div class="line"><span class="k">Entregar en</span><span class="v">' + esc(o.dest) + '</span></div>' +
-    '<div class="line"><span class="k">Lleva</span><span class="v">' + esc(o.desc) + '</span></div>' +
-    moneyRow(o) +
+    '<div class="line"><span class="k">Lleva</span><span class="v">' + esc(pdesc(o).t) + '</span></div>' +
+    moneyRow(o) + payNote(o) +
     '<p class="hint">Comisión de ' + cents(comC(o)) + ' (13%) al entregar.</p>' +
     '<div class="actions">' + acceptBtn(o, S.busy.has(o.id)) + '</div></article>';
 }
@@ -891,7 +921,7 @@ function tripCard(o) {
     '<div class="line"><span class="k">Recoger en</span><span class="v">' + esc(o.shop) + ' · ' + esc(o.pickup) + '</span></div>' +
     orderLines(o) +
     (o.tel ? '<div class="line"><span class="k">Teléfono del cliente</span><span class="v">' + esc(o.tel) + '</span></div>' : '') +
-    moneyRow(o) + links + '<div class="actions">' + btn + '</div>' +
+    moneyRow(o) + payNote(o) + links + '<div class="actions">' + btn + '</div>' +
     '<button class="btn ghost small block" type="button" data-act="issue" data-id="' + esc(o.id) + '">Tengo un problema</button></article>';
 }
 function renderRider() {
@@ -1174,16 +1204,23 @@ $('#orderForm').addEventListener('submit', async (e) => {
   ensureAudio();
   const btn = $('#orderBtn'); btn.disabled = true; btn.textContent = 'Enviando…';
   const tarifa = Math.round(Number($('#o-tarifa').value) || 0);
-  const cobro = Math.round((Number($('#o-cobro').value) || 0) * 100) / 100;
+  let cobro = Math.round((Number($('#o-cobro').value) || 0) * 100) / 100, descTxt = $('#o-desc').value.trim();
+  if (isCli(S.profile)) {
+    const tp = (document.querySelector('input[name=ctipo]:checked') || {}).value || 'e', qp = (document.querySelector('input[name=cquien]:checked') || {}).value || 'r';
+    const prod = tp === 'v' ? Math.round((Number($('#o-prod').value) || 0) * 100) / 100 : 0;
+    if (tp === 'v' && prod <= 0) { toast('Escribe cuánto cuesta el producto.'); btn.disabled = false; btn.textContent = 'Pedir moto'; return; }
+    cobro = Math.round((prod + (qp === 'r' ? tarifa : 0)) * 100) / 100;
+    descTxt = descTxt.slice(0, 90) + DSEP + tp + '|' + prod + '|' + qp;
+  }
   const o = {
     shopId: S.uid, shop: S.name, pickup: isCli(S.profile) ? buildPick() : $('#o-pick').value.trim(), cliente: $('#o-cliente').value.trim(), tel: $('#o-tel').value.trim(),
-    dest: buildDest(), desc: $('#o-desc').value.trim(), cobro, tarifa
+    dest: buildDest(), desc: descTxt, cobro, tarifa
   };
   try {
     if (tarifa < 1 || tarifa > 2000) throw new Error('tarifa');
     const id = await createOrder(o);
     ['o-cliente', 'o-tel', 'o-dest', 'o-calle', 'o-num', 'o-int', 'o-col', 'o-ref', 'o-desc', 'o-cobro'].forEach((i) => { $('#' + i).value = ''; });
-    ['p-calle', 'p-col'].forEach((i) => { $('#' + i).value = ''; });
+    ['p-calle', 'p-col', 'o-prod'].forEach((i) => { $('#' + i).value = ''; }); cliSum();
     saveCity();
     S.tab = 'pedidos';
     toast('Pedido ' + folio(id) + ' enviado a los repartidores.');
@@ -1558,5 +1595,37 @@ function saveCity() { lsSet('gasca_ciudad', val('o-ciudad')); lsSet('gasca_mun',
 (function () {
   const st = document.createElement('style');
   st.textContent = '.sec-h{margin:22px 0 14px!important;padding-bottom:6px;border-bottom:2px solid var(--line,#cfd6de)}.sec-h label{font-weight:800!important;font-size:17px!important;color:var(--ink,inherit)!important;letter-spacing:.02em}';
+  document.head.appendChild(st);
+})();
+
+function cliSum() {
+  const el = $('#paySum'); if (!el) return;
+  const tp = (document.querySelector('input[name=ctipo]:checked') || {}).value || 'e', qp = (document.querySelector('input[name=cquien]:checked') || {}).value || 'r';
+  $('#fProd').hidden = tp !== 'v';
+  const prod = tp === 'v' ? (Number($('#o-prod').value) || 0) : 0, T = Math.round(Number($('#o-tarifa').value) || 0);
+  const f = (n) => '$' + (Math.round(n * 100) / 100);
+  let h = '<b>Resumen</b>';
+  if (tp === 'v') h += '<br>El repartidor te paga ' + f(prod) + ' al recoger.';
+  if (tp === 'p') h += '<br>El producto ya está pagado. No se cobra el producto.';
+  const tot = prod + (qp === 'r' ? T : 0);
+  h += '<br>Al entregar se cobrará: <b>' + f(tot) + '</b>' + (qp === 'r' && tp === 'v' ? ' (' + f(prod) + ' producto + ' + f(T) + ' mandadito)' : '');
+  if (qp === 'e') h += '<br>Tú pagas el mandadito (' + f(T) + ') al repartidor.';
+  el.innerHTML = h;
+}
+(function () {
+  const pair = document.querySelector('#orderForm .pair'); if (!pair) return;
+  const card = (n, v, t, sm, chk) => '<label class="role"><input type="radio" name="' + n + '" value="' + v + '"' + (chk ? ' checked' : '') + '><span class="card-r"><b>' + t + '</b><small>' + sm + '</small></span></label>';
+  pair.insertAdjacentHTML('beforebegin',
+    '<div id="cliPay" hidden><div class="field sec-h"><label>¿Hay una venta de por medio?</label></div><div class="roles" style="grid-template-columns:1fr">' +
+    card('ctipo', 'e', 'No, solo es un envío', 'Por ejemplo, un martillo prestado.', true) +
+    card('ctipo', 'v', 'Sí, me pagan al entregar', 'El repartidor te paga el producto al recoger y lo cobra a quien recibe.') +
+    card('ctipo', 'p', 'Sí, pero ya me pagaron', 'Por ejemplo, por transferencia. El repartidor no cobra el producto.') + '</div>' +
+    '<div class="field" id="fProd" hidden style="margin-top:12px"><label for="o-prod">¿Cuánto cuesta el producto?</label><input id="o-prod" type="number" inputmode="decimal" min="0" step="any" placeholder="$ precio del producto"></div></div>' +
+    '<div id="cliQuien" hidden><div class="field sec-h"><label>¿Quién paga el mandadito?</label></div><div class="roles" style="grid-template-columns:1fr">' +
+    card('cquien', 'r', 'Quien recibe', 'Se lo cobra el repartidor al entregar.', true) + card('cquien', 'e', 'Yo', 'Le pago yo al repartidor.') + '</div></div>');
+  pair.insertAdjacentHTML('afterend', '<div id="paySum" class="sumbox" hidden></div>');
+  const f = $('#orderForm'); f.addEventListener('input', cliSum); f.addEventListener('change', cliSum); cliSum();
+  const st = document.createElement('style');
+  st.textContent = '.sumbox{margin:14px 0;padding:14px;border:2px dashed var(--line);border-radius:14px;background:var(--surface);line-height:1.5}.paynote{margin:10px 0;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--accent) 16%,var(--surface));line-height:1.45;font-size:15px}';
   document.head.appendChild(st);
 })();
