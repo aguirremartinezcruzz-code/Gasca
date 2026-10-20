@@ -183,12 +183,12 @@ const telOf = (email) => String(email || '').endsWith(TEL_DOM) ? email.slice(0, 
 function safeImg(s) { return typeof s === 'string' && s.length < 260000 && /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(s) ? s : ''; }
 function personStatus(u, a) {
   const docsEn = (u && u.docsEn) || 0;
-  if (a && a.estado === 'eliminado') return 'eliminado';
+  if (a && a.estado === 'eliminado' && (a.en || 0) >= docsEn) return 'eliminado';
   if (a && a.estado === 'aprobado') return 'aprobado';
   if (a && a.estado === 'rechazado' && (a.en || 0) >= docsEn) return 'rechazado';
   return docsEn ? 'revision' : 'incompleto';
 }
-const verLabel = (st) => ({ revision: 'Documentos por revisar', incompleto: 'Sin documentos', rechazado: 'Documentos rechazados', aprobado: 'Aprobado' }[st] || '');
+const verLabel = (st) => ({ eliminado: 'Dado de baja', revision: 'Documentos por revisar', incompleto: 'Sin documentos', rechazado: 'Documentos rechazados', aprobado: 'Aprobado' }[st] || '');
 function myStatus() {
   if (!S.profileReady || !S.aprReady) return 'cargando';
   if (!S.profile) return 'perfil';
@@ -202,7 +202,6 @@ function view() {
   const st = myStatus();
   if (st === 'cargando') return 'loading';
   if (st === 'perfil') return 'profile';
-  if (st === 'eliminado') { if (!S.byeT) { S.byeT = setTimeout(() => { S.byeT = null; toast('Tu cuenta fue dada de baja por la administración.'); doSignOut(); }, 300); } return 'loading'; }
   if (st !== 'aprobado') return 'verify';
   return S.role === 'shop' ? 'shop' : 'rider';
 }
@@ -263,7 +262,7 @@ function setMode(m) {
 function showErr() { const el = $('#authErr'); el.hidden = !S.authErr; el.textContent = S.authErr; }
 function authMsg(e) {
   const c = (e && e.code) || '';
-  if (c === 'auth/email-already-in-use') return (roleVal() === 'cliente' ? 'Ese teléfono ya tiene cuenta. Toca "Ya tengo cuenta".' : 'Ese correo ya tiene cuenta. Toca "Ya tengo cuenta".');
+  if (c === 'auth/email-already-in-use') return (roleVal() === 'cliente' ? 'Ese teléfono ya tiene cuenta. Toca "Ya tengo cuenta".' : 'Ese correo ya tiene cuenta. Toca "Ya tengo cuenta" y entra con tu contraseña. Si te dieron de baja, al entrar podrás volver a solicitar tu ingreso.');
   if (c === 'auth/invalid-credential' || c === 'auth/wrong-password' || c === 'auth/user-not-found' || c === 'auth/invalid-login-credentials') return 'Correo, teléfono o contraseña incorrectos.';
   if (c === 'auth/weak-password') return 'La contraseña debe tener al menos 6 caracteres.';
   if (c === 'auth/invalid-email') return 'Ese correo no se ve bien. Revísalo.';
@@ -832,7 +831,8 @@ async function openReview(id) {
     if (S.review === id) { S.revPhotos = m; render(); }
   } catch (e) { if (S.review === id) { S.revPhotos = {}; render(); } toast('No se pudieron cargar las fotos.'); }
 }
-function repTag(id) { const n = (S.aprobs[id] || {}).repNo; return n ? 'R-' + String(n).padStart(3, '0') + ' · ' : ''; }
+function repTag(id) { const a = S.aprobs[id] || {}, n = a.repNo; return (a.bajas ? '⚠ ' : '') + (n ? 'R-' + String(n).padStart(3, '0') + ' · ' : ''); }
+function bajaLine(id) { const a = S.aprobs[id] || {}; return a.bajas ? '<div class="paynote"><b>⚠ Reingreso:</b> esta persona fue dada de baja ' + (a.bajas > 1 ? a.bajas + ' veces' : 'una vez') + (a.bajaEn ? ' (última: ' + new Date(a.bajaEn).toLocaleDateString("es-MX") + ')' : '') + '. Ponle más atención en sus pedidos.</div>' : ''; }
 function nextRepNo() { let m = 0; Object.keys(S.aprobs).forEach((k) => { const n = S.aprobs[k] && S.aprobs[k].repNo; if (n > m) m = n; }); return m + 1; }
 async function assignRepNos() {
   if (!S.isAdmin || S.repBusy) return;
@@ -854,6 +854,7 @@ async function resolveAlta(id, ok, motivo) {
     const prev = S.aprobs[id] || {}, usr = S.users.find((x) => x.id === id);
     const data = { id, estado: ok ? 'aprobado' : 'rechazado', motivo: ok ? '' : motivo, en: Date.now(), por: S.uid };
     if (prev.repNo) data.repNo = prev.repNo; else if (ok && usr && usr.role === 'rider') data.repNo = nextRepNo();
+    if (prev.bajas) { data.bajas = prev.bajas; data.bajaEn = prev.bajaEn || 0; }
     await setDoc(doc(db, 'aprobaciones', id), data);
     S.review = null; S.revPhotos = null; S.motivo = ''; S.suspId = null;
     toast(ok ? 'Cuenta aprobada.' : 'Cuenta rechazada.');
@@ -974,6 +975,7 @@ function renderVerify() {
   }
   const a = S.myAprob;
   let h = headH + '<p class="lede">' + (S.role === 'rider' ? 'Para recibir pedidos necesitamos 6 fotos. Solo sirven para confirmar quién eres.' : isCli(S.profile) ? 'Para pedir mandaditos necesitamos 3 fotos: tu selfie y tu INE por los dos lados. Solo sirven para confirmar quién eres.' : 'Para pedir motos necesitamos 3 fotos. Solo sirven para confirmar tu negocio.') + '</p>';
+  if (st === 'eliminado') h += '<div class="banner"><b>Tu cuenta fue dada de baja.</b> Si quieres volver a usar Gasca, revisa tus documentos y envíalos otra vez. La administración los revisará con atención.</div>';
   if (st === 'rechazado') h += '<div class="banner"><b>No se aprobaron tus documentos.</b> ' + esc(a && a.motivo ? a.motivo : 'Revisa las fotos y súbelas de nuevo.') + '</div>';
   let ready = 0;
   slots.forEach((s) => {
@@ -1245,8 +1247,8 @@ function renderMonitor() {
 function altaCard(u) {
   const slots = slotsFor(u), open = S.review === u.id, busy = S.busy.has('al' + u.id);
   const n = Array.isArray(u.fotos) ? u.fotos.length : 0;
-  let h = '<article class="order"><div class="head"><span class="folio">' + esc(u.name) + '</span><span class="chip abierto">' + esc(roleLbl(u)) + '</span><span class="ago">' + ago(u.docsEn) + '</span></div>' +
-    (u.role === 'shop' && u.addr ? '<div class="line"><span class="k">Dirección</span><span class="v">' + esc(u.addr) + '</span></div>' : '') +
+  let h = '<article class="order"><div class="head"><span class="folio">' + esc(repTag(u.id) + u.name) + '</span><span class="chip abierto">' + esc(roleLbl(u)) + '</span><span class="ago">' + ago(u.docsEn) + '</span></div>' +
+    bajaLine(u.id) + (u.role === 'shop' && u.addr ? '<div class="line"><span class="k">Dirección</span><span class="v">' + esc(u.addr) + '</span></div>' : '') +
     '<div class="line"><span class="k">Fotos enviadas</span><span class="v">' + n + ' de ' + slots.length + '</span></div>' +
     ('<div class="line"><span class="k">' + (u.role === 'rider' ? 'Reglamento' : 'Aviso de privacidad') + '</span><span class="v">' + (u.reglamentoEn ? 'Aceptado v' + esc(u.reglamentoV || '') + ' · ' + new Date(u.reglamentoEn).toLocaleString('es-MX') : 'No lo ha aceptado') + '</span></div>');
   if (!open) return h + '<div class="actions"><button class="btn primary small" type="button" data-act="rev-open" data-id="' + esc(u.id) + '">Revisar documentos</button></div></article>';
@@ -1273,6 +1275,8 @@ async function setBaja(id, baja) {
     const prev = S.aprobs[id] || {};
     const data = { id, estado: baja ? 'eliminado' : 'rechazado', motivo: baja ? 'Cuenta eliminada por la administración.' : 'Cuenta restaurada: vuelve a enviar tus documentos.', en: Date.now(), por: S.uid };
     if (prev.repNo) data.repNo = prev.repNo;
+    data.bajas = (prev.bajas || 0) + (baja ? 1 : 0); data.bajaEn = baja ? Date.now() : (prev.bajaEn || 0);
+    if (!data.bajas) { delete data.bajas; delete data.bajaEn; }
     await setDoc(doc(db, 'aprobaciones', id), data);
     S.delId = null; S.suspId = null;
     toast(baja ? 'Usuario eliminado.' : 'Usuario restaurado.');
@@ -1291,7 +1295,7 @@ function renderAltas() {
   h += '<div class="subhead">Aprobados (' + apr.length + ')</div>';
   h += apr.length ? apr.map((x) => {
     const u = x.u, a = S.aprobs[u.id] || {};
-    return '<div class="pr"><div class="t"><b>' + esc(repTag(u.id) + u.name) + '</b><span class="chip entregado">Aprobado</span></div><small>' + esc(roleLbl(u)) + ' · aprobado ' + ago(a.en || u.creadoEn) + '</small>' +
+    return '<div class="pr"><div class="t"><b>' + esc(repTag(u.id) + u.name) + '</b><span class="chip entregado">Aprobado</span></div><small>' + esc(roleLbl(u)) + ' · aprobado ' + ago(a.en || u.creadoEn) + '</small>' + bajaLine(u.id) +
       (S.suspId === u.id
         ? '<div class="actions"><button class="btn ghost small" type="button" data-act="susp-no">Conservar</button><button class="btn danger small" type="button" data-act="susp-yes" data-id="' + esc(u.id) + '">Sí, suspender</button></div>'
         : S.delId === u.id ? delConfirm(u)
@@ -1473,7 +1477,7 @@ document.addEventListener('click', (e) => {
   if (act === 'menu') { if (confirm('¿Cerrar sesión?')) doSignOut(); }
   else if (act === 'signout') doSignOut();
   else if (act === 'mode-login') { setMode('login'); }
-  else if (act === 'mode-signup') { setMode('signup'); }
+  else if (act === 'mode-signup') { [...af.querySelectorAll('input[name=role]')].forEach((r) => { r.checked = false; }); setMode('signup'); }
   else if (act === 'mode-owner') { setMode('owner'); }
   else if (act === 'owner-create') ownerCreate();
   else if (act === 'owner-check') ownerCheck();
@@ -2175,7 +2179,7 @@ function delivNotice(o) {
   let hadUser = false;
   function sync() {
     const u = !!S.user;
-    if (hadUser && !u) { WC.on = true; if (S.authMode !== 'login') setMode('login'); }
+    if (hadUser && !u && !off()) { WC.on = true; if (S.authMode !== 'login') setMode('login'); }
     hadUser = u;
     const isAuth = view() === 'auth' && S.authMode === 'login' || (view() === 'auth' && WC.on);
     const show = !off() && WC.on && view() === 'auth' && S.authMode === 'login';
