@@ -2056,7 +2056,7 @@ function wzInit() {
   f.addEventListener('click', (e) => {
     const t = e.target.closest ? e.target : null; if (!t || wzOff()) return;
     if (t.closest('#wzNext')) { if (wzValid(WZ.step)) wzGo(WZ.step + 1); }
-    else if (t.closest('#wzBack')) wzGo(WZ.step - 1);
+    else if (t.closest('#wzBack')) { if (WZ.step === 0) { S.tab = 'pedidos'; S.cancelId = null; render(); try { window.scrollTo(0, 0); } catch (er) {} } else wzGo(WZ.step - 1); }
     else if (t.closest('[data-wzgo]')) { e.preventDefault(); wzGo(Number(t.closest('[data-wzgo]').getAttribute('data-wzgo'))); }
     else if (t.closest('[data-wzcli]')) {
       const c = (wzLoad(wzCliKey()) || [])[Number(t.closest('[data-wzcli]').getAttribute('data-wzcli'))];
@@ -2088,7 +2088,7 @@ function wzSync() {
   $('#wzBar').style.width = Math.round(((WZ.step + 1) / n) * 100) + '%';
   $('#wzN').textContent = 'Paso ' + (WZ.step + 1) + ' de ' + n;
   $('#wzTitle').innerHTML = (st.ic ? st.ic + ' ' : '') + esc(st.t); $('#wzHint').textContent = st.h;
-  $('#wzBack').hidden = WZ.step === 0; $('#wzNext').hidden = !!st.last;
+  $('#wzBack').hidden = false; $('#wzBack').textContent = WZ.step === 0 ? '← Mis pedidos' : 'Atrás'; $('#wzNext').hidden = !!st.last;
   const btn = $('#orderBtn'); if (!btn.disabled) btn.textContent = 'Generar pedido';
   if (WZ.dirty) {
     WZ.dirty = false;
