@@ -1384,6 +1384,7 @@ function renderAdmin() {
   ];
 }
 
+function whoSet(t) { const n = document.getElementById('whoName'); if (n && n.textContent !== t) n.textContent = t; }
 function renderTabs(tabs) {
   const nav = $('#tabs'); nav.hidden = !tabs;
   if (!tabs) return;
@@ -1410,13 +1411,17 @@ function render() {
   if (v === 'owner') $('#ownerMail').textContent = 'Correo: ' + S.email;
   const who = $('#who');
   who.hidden = !S.user || v === 'loading';
-  if (S.user) who.textContent = v === 'admin' ? 'Dueño' : (S.name ? (isCli(S.profile) ? 'Envío personal · ' : { shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + (S.role === 'rider' && S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') + ' · ' : '') + S.name : 'Salir');
+  { const n0 = document.getElementById('whoName'); if (n0) n0.hidden = who.hidden; }
+  { const hm = !!S.user && (v === 'shop' || v === 'rider'); who.classList.toggle('has-menu', hm); const lb = hm ? '☰ Menú' : 'Salir'; if (who.textContent !== lb) who.textContent = lb; }
+  if (S.user) whoSet(v === 'admin' ? 'Dueño' : (S.name ? (isCli(S.profile) ? 'Envío personal · ' : { shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + (S.role === 'rider' && S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') + ' · ' : '') + S.name : 'Salir'));
   renderBanner();
   if (v !== 'rider') { S.sheetId = null; if (!$('#sheet').hidden) { $('#sheet').hidden = true; S.sheetKey = ''; } }
   let tabs = null;
   if (v === 'verify') renderVerify();
   if (v === 'shop') tabs = renderShop();
   if (v === 'rider') tabs = renderRider();
+  S.menuTabs = (v === 'shop' || v === 'rider') ? tabs : null;
+  if (S.menuTabs) tabs = null;
   if (v === 'admin') { const list = renderAdmin(); S.adminMenu = list; adminHome(list); tabs = null; }
   renderTabs(tabs);
   $('#orderBtn').disabled = !canAct();
@@ -2616,9 +2621,10 @@ function tarFor(km) {
   }
   const optTxt = (o) => o.kind ? 'modo ' + LBL[o.kind] : 'mi otro perfil';
   const st = document.createElement('style');
-  st.textContent = '.who.has-menu::after{content:"☰ Menú"!important}#gMenu{position:fixed;inset:0;z-index:9000;background:rgba(15,20,28,.55);display:flex;align-items:flex-end;justify-content:center}#gMenu[hidden]{display:none}#gMenu .gm{width:100%;max-width:480px;background:#fff;color:#16202a;border-radius:22px 22px 0 0;padding:20px 18px 26px;box-shadow:0 -10px 40px rgba(0,0,0,.25)}#gMenu h3{margin:0 0 4px;font-size:20px}#gMenu p{margin:4px 0 12px;font-size:14.5px;opacity:.8}#gMenu button{display:block;width:100%;min-height:54px;margin-top:10px;border-radius:16px;border:2px solid #16202a;background:#fff;color:#16202a;font:inherit;font-weight:800;font-size:16.5px;padding:10px 14px}#gMenu button.pri{background:#f6b400;border-color:#f6b400}#gMenu button.dk{background:#16202a;color:#fff}#gMenu button.gh{border-color:#cfd6de;font-weight:700}#gMenu input{width:100%;min-height:50px;border:2px solid #cfd6de;border-radius:14px;padding:8px 12px;font:inherit;font-size:17px;margin-top:8px}#gMenu .er{color:#b3261e;font-weight:700;margin:8px 0 0;font-size:14px}#gMenu .gr{display:grid;grid-template-columns:1fr 1fr;gap:10px}#gMenu .gr button{min-height:110px;font-size:17px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}';
+  st.textContent = '.top{flex-wrap:wrap;row-gap:10px}.top .brand{flex:1 1 100%}.who::before,.who::after{content:none!important}.who{order:4;flex:0 0 auto!important;max-width:none!important;width:auto;min-height:46px;padding:8px 18px!important;border-radius:14px!important;font-size:15px!important;font-weight:800!important;border:2px solid #16202a!important;background:#fff!important;color:#16202a!important;display:flex;align-items:center;white-space:nowrap!important}.who.has-menu{background:#16202a!important;color:#fff!important}#whoName{order:3;flex:1 1 0;min-width:0;display:flex;align-items:center;gap:9px;border:1px solid var(--line,#cfd6de);background:var(--surface,#fff);border-radius:14px;padding:8px 14px;font-size:14px;font-weight:600;line-height:1.25;overflow:hidden;text-overflow:ellipsis}#whoName::before{content:"";flex:0 0 9px;height:9px;border-radius:50%;background:var(--green,#17803F)}#whoName[hidden]{display:none}#gMenu .gm{max-height:88vh;overflow:auto}#gMenu .gl{margin:14px 0 2px;font-size:12.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;opacity:.6}#gMenu button.tb,#gMenu button.cur{text-align:left;display:flex;align-items:center;justify-content:space-between;border-color:#cfd6de;min-height:50px}#gMenu button.cur{background:#fff3c4;border-color:#f6b400}#gMenu button.sw{border-color:#cfd6de;text-align:left}#gMenu .gbd{background:#b3261e;color:#fff;border-radius:99px;padding:1px 8px;font-size:13px;margin-left:8px}.who.has-menu::after{content:none!important}#gMenu{position:fixed;inset:0;z-index:9000;background:rgba(15,20,28,.55);display:flex;align-items:flex-end;justify-content:center}#gMenu[hidden]{display:none}#gMenu .gm{width:100%;max-width:480px;background:#fff;color:#16202a;border-radius:22px 22px 0 0;padding:20px 18px 26px;box-shadow:0 -10px 40px rgba(0,0,0,.25)}#gMenu h3{margin:0 0 4px;font-size:20px}#gMenu p{margin:4px 0 12px;font-size:14.5px;opacity:.8}#gMenu button{display:block;width:100%;min-height:54px;margin-top:10px;border-radius:16px;border:2px solid #16202a;background:#fff;color:#16202a;font:inherit;font-weight:800;font-size:16.5px;padding:10px 14px}#gMenu button.pri{background:#f6b400;border-color:#f6b400}#gMenu button.dk{background:#16202a;color:#fff}#gMenu button.gh{border-color:#cfd6de;font-weight:700}#gMenu input{width:100%;min-height:50px;border:2px solid #cfd6de;border-radius:14px;padding:8px 12px;font:inherit;font-size:17px;margin-top:8px}#gMenu .er{color:#b3261e;font-weight:700;margin:8px 0 0;font-size:14px}#gMenu .gr{display:grid;grid-template-columns:1fr 1fr;gap:10px}#gMenu .gr button{min-height:110px;font-size:17px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}';
   document.head.appendChild(st);
   const el = document.createElement('div'); el.id = 'gMenu'; el.hidden = true; document.body.appendChild(el);
+  { const w0 = $('#who'); if (w0 && !document.getElementById('whoName')) { const n0 = document.createElement('div'); n0.id = 'whoName'; n0.hidden = true; w0.before(n0); } }
   let mode = '', err = '', busy = false, pick = null, chooseOpts = [];
   const close = () => { el.hidden = true; mode = ''; err = ''; pick = null; };
   const gpw = () => (S.pwFor === S.email ? S.pw || '' : '');
@@ -2626,7 +2632,9 @@ function tarFor(km) {
     const i = info();
     if (mode === 'menu' && i) {
       el.innerHTML = '<div class="gm"><h3>☰ Menú</h3><p>' + esc(S.name || '') + ' · modo ' + LBL[i.cur] + '</p>' +
-        i.opts.map((o, n) => '<button class="pri" data-gm="switch" data-k="' + n + '">🔁 Cambiar a ' + optTxt(o) + '</button>').join('') +
+        (S.menuTabs ? '<div class="gl">Ir a</div>' + S.menuTabs.map((t) => '<button class="' + (S.tab === t.id ? 'cur' : 'tb') + '" data-gm="tab" data-t="' + esc(t.id) + '">' + esc(t.label) + (t.badge ? ' <span class="gbd">' + t.badge + '</span>' : '') + (S.tab === t.id ? ' ✓' : '') + '</button>').join('') : '') +
+        '<div class="gl">Cambiar de perfil</div>' +
+        i.opts.map((o, n) => '<button class="sw" data-gm="switch" data-k="' + n + '">🔁 Cambiar a ' + optTxt(o) + '</button>').join('') +
         '<button class="dk" data-gm="out">Cerrar sesión</button><button class="gh" data-gm="close">Cerrar menú</button></div>';
     } else if (mode === 'pass' && pick) {
       el.innerHTML = '<div class="gm"><h3>' + (pick.kind ? ICO[pick.kind] + ' ' : '') + 'Cambiar a ' + optTxt(pick) + '</h3><p>Escribe tu contraseña (la misma de siempre) para continuar.</p><input type="password" id="gm-pass" autocomplete="current-password" placeholder="Tu contraseña">' + (err ? '<div class="er">' + esc(err) + '</div>' : '') +
@@ -2687,6 +2695,7 @@ function tarFor(km) {
     const a = b.getAttribute('data-gm'), i = info(), k = Number(b.getAttribute('data-k'));
     if (a === 'close' || a === 'stay') close();
     else if (a === 'out') { close(); doSignOut(); }
+    else if (a === 'tab') { S.tab = b.getAttribute('data-t'); S.cancelId = null; close(); render(); try { window.scrollTo(0, 0); } catch (er) {} }
     else if (a === 'switch' && i && i.opts[k]) choose(i.opts[k]);
     else if (a === 'goto' && chooseOpts[k]) choose(chooseOpts[k]);
     else if (a === 'go') { const v = (el.querySelector('#gm-pass') || {}).value || ''; if (v.length < 6) { err = 'Escribe tu contraseña.'; paint(); return; } go(v, pick); }
@@ -2707,7 +2716,14 @@ function tarFor(km) {
     if (found.length && S.user && S.email === p.email && !mode) { chooseOpts = found; mode = 'choose'; err = ''; paint(); }
   }
   setInterval(() => {
-    const who = $('#who'); if (who) { const v = S.user ? view() : ''; who.classList.toggle('has-menu', v === 'shop' || v === 'rider'); }
+    const who = $('#who'); if (who) {
+      const v = S.user ? view() : '', hm = v === 'shop' || v === 'rider';
+      who.classList.toggle('has-menu', hm);
+      const lb = hm ? '☰ Menú' : 'Salir'; if (who.textContent !== lb) who.textContent = lb;
+      let nm = document.getElementById('whoName');
+      if (!nm) { nm = document.createElement('div'); nm.id = 'whoName'; who.before(nm); }
+      nm.hidden = who.hidden;
+    }
     if (!S.user) { S.pw = ''; if (mode) close(); }
     if (pend && S.user && S.ready) {
       const v = view(); if (v === 'loading' || v === 'auth') return;
