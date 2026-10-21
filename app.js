@@ -227,11 +227,11 @@ function setMode(m) {
   if (m === 'signup' && S.authMode !== 'signup') [...af.querySelectorAll('input[name=role]')].forEach((r) => { r.checked = false; });
   S.authMode = m; S.authErr = '';
   const su = m === 'signup', ow = m === 'owner', pr = m === 'profile', form = su || pr;
-  $('#authTitle').textContent = { login: 'Entrar', signup: 'Crear cuenta', owner: S.soporteLink ? 'Soporte Gasca' : 'Administración', profile: 'Completa tu cuenta' }[m];
+  $('#authTitle').textContent = { login: 'Entrar', signup: 'Crear cuenta', owner: S.soporteLink ? 'Equipo Gasca' : 'Administración', profile: 'Completa tu cuenta' }[m];
   $('#authLede').textContent = {
     login: 'Entra con tu correo y tu contraseña.',
     signup: 'Crea tu cuenta una sola vez. Después entras con tu correo y tu contraseña.',
-    owner: S.soporteLink ? 'Bienvenido al equipo de soporte. Si ya tienes contraseña, escríbela y toca Entrar. Si es tu primera vez, escribe una contraseña nueva y toca "Crear mi cuenta".' : 'Para el dueño y el equipo de soporte de Gasca.',
+    owner: S.soporteLink ? 'Bienvenido al equipo de Gasca. Si ya tienes contraseña, escríbela y toca Entrar. Si es tu primera vez, escribe una contraseña nueva y toca "Crear mi cuenta".' : 'Para el dueño y el equipo de soporte de Gasca.',
     profile: 'Elige quién eres para terminar de crear tu cuenta.'
   }[m];
   $('#authRoles').hidden = !form;
@@ -375,7 +375,7 @@ function bootstrap(u) {
   S.ownerEmail = OWNER_OK && S.email === OWNER;
   S.isAdmin = S.ownerEmail && u.emailVerified === true;
   if (S.ownerEmail && !S.isAdmin) { render(); return; }
-  S.isAgent = false; S.agChk = false; S.staffUnver = false; S.agentName = '';
+  S.isAgent = false; S.isPartner = false; S.agChk = false; S.staffUnver = false; S.agentName = '';
   if (S.isAdmin) { S.tab = 'inicio'; startAdmin(); render(); return; }
   let staff = ''; try { staff = localStorage.getItem('gasca_staff') || ''; } catch (e) {}
   if (staff && staff === S.email) {
@@ -385,8 +385,8 @@ function bootstrap(u) {
       if (S.uid !== u.uid) return;
       S.agChk = false;
       const d = sn.exists() ? sn.data() : null;
-      if (d && d.activo !== false) { S.isAdmin = true; S.isAgent = true; S.agentName = d.name || 'Soporte'; S.tab = 'inicio'; startAdmin(); render(); pushPresence(); holdWake(); }
-      else staffDeny('Este correo no está dado de alta como agente de soporte. Pídele al dueño que te agregue.');
+      if (d && d.activo !== false) { S.isAdmin = true; if (d.rol === 'socio') S.isPartner = true; else S.isAgent = true; S.agentName = d.name || 'Soporte'; S.tab = 'inicio'; startAdmin(); render(); pushPresence(); holdWake(); }
+      else staffDeny('Este correo no está dado de alta en el equipo. Pídele al dueño que te agregue.');
     }).catch(() => { if (S.uid !== u.uid) return; S.agChk = false; staffDeny('No se pudo entrar a soporte. Avisa al dueño.'); });
     return;
   }
@@ -667,8 +667,8 @@ function startAdmin() {
 
 /* Quién tiene la app abierta: cada teléfono avisa cada minuto. */
 function pushPresence() {
-  if (!S.uid || (S.isAdmin && !S.isAgent) || S.ownerEmail) return;
-  if (S.isAgent) { setDoc(doc(db, 'presence', S.uid), { online: true, lastSeen: Date.now(), role: 'soporte', name: S.email }).catch(() => {}); return; }
+  if (!S.uid || (S.isAdmin && !S.isAgent && !S.isPartner) || S.ownerEmail) return;
+  if (S.isAgent || S.isPartner) { setDoc(doc(db, 'presence', S.uid), { online: true, lastSeen: Date.now(), role: S.isPartner ? 'socio' : 'soporte', name: S.email }).catch(() => {}); return; }
   setDoc(doc(db, 'presence', S.uid), { online: !!S.online, lastSeen: Date.now(), role: S.role || '', name: S.name || '' }).catch(() => {});
 }
 setInterval(() => { if (document.visibilityState === 'visible') pushPresence(); }, 60000);
@@ -1446,7 +1446,7 @@ function render() {
   who.hidden = !S.user || v === 'loading';
   { const n0 = document.getElementById('whoName'); if (n0) n0.hidden = who.hidden; }
   { const hm = !!S.user && (v === 'shop' || v === 'rider'); who.classList.toggle('has-menu', hm); const lb = hm ? '☰ Menú' : 'Salir'; if (who.textContent !== lb) who.textContent = lb; }
-  if (S.user) whoSet(v === 'admin' ? (S.isAgent ? 'Soporte · ' + S.agentName : 'Dueño') : (S.name ? (isCli(S.profile) ? 'Envío personal · ' : { shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + (S.role === 'rider' && S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') + ' · ' : '') + S.name : 'Salir'));
+  if (S.user) whoSet(v === 'admin' ? (S.isAgent ? 'Soporte · ' + S.agentName : S.isPartner ? 'Socio · ' + S.agentName : 'Dueño') : (S.name ? (isCli(S.profile) ? 'Envío personal · ' : { shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + (S.role === 'rider' && S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') + ' · ' : '') + S.name : 'Salir'));
   renderBanner();
   if (v !== 'rider') { S.sheetId = null; if (!$('#sheet').hidden) { $('#sheet').hidden = true; S.sheetKey = ''; } }
   let tabs = null;
@@ -1547,7 +1547,8 @@ document.addEventListener('click', (e) => {
   else if (act === 'swr-close') { S.swr = false; render(); }
   else if (act === 'swr-pick') { S.swrRole = b.getAttribute('data-r'); render(); }
   else if (act === 'swr-go') switchRole();
-  else if (act === 'ag-add') agAdd();
+  else if (act === 'ag-add') agAdd('ag');
+  else if (act === 'sc-add') agAdd('sc', 'socio');
   else if (act === 'ag-qr') { const e2 = b.getAttribute('data-e'); S.qrFor = S.qrFor === e2 ? '' : e2; render(); }
   else if (act === 'ag-copy') { const l = agLink(b.getAttribute('data-e')); try { navigator.clipboard.writeText(l).then(() => toast('Enlace copiado.'), () => toast(l)); } catch (e) { toast(l); } }
   else if (act === 'ag-tog') agTog(b.getAttribute('data-e'));
@@ -1922,7 +1923,7 @@ function noReason(o) {
   }
   return '';
 }
-const byMe = () => ({ atendidaPor: S.isAgent ? S.agentName : 'Dueño', atendidaPorEmail: S.email });
+const byMe = () => ({ atendidaPor: (S.isAgent || S.isPartner) ? S.agentName : 'Dueño', atendidaPorEmail: S.email });
 function orderBlock(o, x) {
   const st = ordStatus(o), dp = destParts(o && o.dest);
   return '<div class="subhead" style="margin:12px 0 4px">Datos del pedido</div>' +
@@ -1958,23 +1959,25 @@ function agQrBox(a) {
   else if (!S.qrLoading) { S.qrLoading = true; loadQR((ok) => { S.qrLoading = false; S.qrFail = !ok; render(); }); }
   return '<div class="paynote" style="text-align:center"><b>Invitación para ' + esc(a.name) + '</b><br>' +
     (svg ? '<div style="margin:10px auto;width:260px;max-width:100%;background:#fff;padding:6px;border-radius:12px">' + svg + '</div><small>Pídele que escanee este código con la cámara de su celular.</small>' : '<small>' + (S.qrFail ? 'No se pudo dibujar el código QR. Usa el enlace de abajo.' : 'Preparando el código QR…') + '</small>') +
-    '<div class="actions" style="margin-top:10px"><a class="btn primary small" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent('Hola ' + a.name + ', este es tu acceso al equipo de soporte de Gasca. Ábrelo, crea tu contraseña y listo: ' + link) + '">Enviar por WhatsApp</a>' +
+    '<div class="actions" style="margin-top:10px"><a class="btn primary small" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent('Hola ' + a.name + ', este es tu acceso al equipo de Gasca. Ábrelo, crea tu contraseña y listo: ' + link) + '">Enviar por WhatsApp</a>' +
     '<button class="btn ghost small" type="button" data-act="ag-copy" data-e="' + esc(a.email) + '">Copiar enlace</button></div></div>';
 }
 function renderSoporte(el) {
-  const ags = (S.agentes || []).slice().sort((a, b) => (a.creadoEn || 0) - (b.creadoEn || 0));
+  const allA = (S.agentes || []).slice().sort((a, b) => (a.creadoEn || 0) - (b.creadoEn || 0)), own = !S.isPartner;
+  const ags = allA.filter((a) => a.rol !== 'socio'), socs = allA.filter((a) => a.rol === 'socio');
   const fld = (id, lb, ph, ty) => '<div class="field"><label for="' + id + '">' + lb + '</label><input id="' + id + '" type="' + ty + '" maxlength="80" placeholder="' + ph + '" autocomplete="off"></div>';
   let h = '<h2 class="section">Equipo de soporte</h2><p class="hint">Cada agente entra con su propio correo y contraseña. Todo lo que atiende queda guardado con su nombre en Incidencias.</p>';
-  h += '<article class="order"><div class="subhead" style="margin:0 0 6px">Agregar un agente</div>' + fld('ag-name', 'Nombre del agente', 'Ej. María López', 'text') + fld('ag-mail', 'Correo del agente', 'correo@ejemplo.com', 'email') +
+  if (own) h += '<article class="order"><div class="subhead" style="margin:0 0 6px">Agregar un agente</div>' + fld('ag-name', 'Nombre del agente', 'Ej. María López', 'text') + fld('ag-mail', 'Correo del agente', 'correo@ejemplo.com', 'email') +
     '<button class="btn primary block" type="button" data-act="ag-add">Agregar agente</button>' +
-    '<p class="hint">Al agregarlo te sale su <b>QR</b>. Él lo escanea, crea su contraseña, verifica su correo y ya queda dando soporte. No necesita buscar ningún botón.</p></article>';
-  const nOn = ags.filter((a) => Object.keys(S.presence || {}).some((k) => { const p = S.presence[k]; return p && p.role === 'soporte' && p.name === a.email && Date.now() - (p.lastSeen || 0) < FRESH_MS; })).length;
+    '<p class="hint">Al agregarlo te sale su <b>QR</b>. Él lo escanea, crea su contraseña, verifica su correo y ya queda dando soporte. No necesita buscar ningún botón.</p></article>' +
+    '<article class="order"><div class="subhead" style="margin:0 0 6px">Agregar un socio administrador</div><p class="hint">Ve todo el panel (altas, recargas, saldos, soporte). No puede agregar ni quitar socios o agentes.</p>' + fld('sc-name', 'Nombre del socio', 'Ej. Juan Pérez', 'text') + fld('sc-mail', 'Correo del socio', 'correo@ejemplo.com', 'email') + '<button class="btn primary block" type="button" data-act="sc-add">Agregar socio</button></article>';
+  const nOn = ags.filter((a) => Object.keys(S.presence || {}).some((k) => { const p = S.presence[k]; return p && (p.role === 'soporte' || p.role === 'socio') && p.name === a.email && Date.now() - (p.lastSeen || 0) < FRESH_MS; })).length;
   h += '<div class="subhead">Agentes (' + ags.length + ') · ' + nOn + ' conectado' + (nOn === 1 ? '' : 's') + '</div>';
-  h += ags.length ? ags.map((a) => {
+  const card = (a) => {
     const mine = S.incs.filter((x) => x.estado !== 'abierta' && x.atendidaPorEmail === a.email);
     const last = mine.reduce((m, x) => Math.max(m, x.atendidaEn || 0), 0), on = a.activo !== false;
     const hoy = mine.filter((x) => isToday(x.atendidaEn)).length, cnt = (k) => mine.filter((x) => x.accion === k).length;
-    const pp = Object.keys(S.presence || {}).map((k) => S.presence[k]).filter((p) => p && p.role === 'soporte' && p.name === a.email).sort((x, y) => (y.lastSeen || 0) - (x.lastSeen || 0))[0];
+    const pp = Object.keys(S.presence || {}).map((k) => S.presence[k]).filter((p) => p && (p.role === 'soporte' || p.role === 'socio') && p.name === a.email).sort((x, y) => (y.lastSeen || 0) - (x.lastSeen || 0))[0];
     const here = !!pp && Date.now() - (pp.lastSeen || 0) < FRESH_MS;
     return '<article class="order"><div class="head"><span class="folio">' + esc(a.name) + '</span><span class="chip ' + (on ? 'entregado' : '') + '">' + (on ? 'Activo' : 'De baja') + '</span></div>' +
       '<div class="line"><span class="k">Conexión</span><span class="v"><b>' + (here ? '🟢 Conectado ahora' : '⚪ Sin conexión') + '</b>' + (!here && pp ? ' · última vez ' + ago(pp.lastSeen) : (!here ? ' · todavía no ha entrado' : '')) + '</span></div>' +
@@ -1983,15 +1986,18 @@ function renderSoporte(el) {
       (mine.length ? '<div class="line"><span class="k">Lo que hizo</span><span class="v">Liberó ' + cnt('liberado') + ' · Canceló ' + cnt('cancelado') + ' · Reasignó ' + cnt('reasignado') + ' · Marcó atendida ' + (cnt('atendida') + mine.filter((x) => !x.accion).length) + '</span></div>' : '') +
       (S.qrFor === a.email ? agQrBox(a) : '') +
       '<div class="actions"><button class="btn ghost small" type="button" data-act="ag-qr" data-e="' + esc(a.email) + '">' + (S.qrFor === a.email ? 'Ocultar QR' : '📲 QR / enlace') + '</button><button class="btn ghost small" type="button" data-act="ag-work" data-e="' + esc(a.email) + '">Ver su trabajo</button>' +
-      '<button class="btn ' + (on ? 'danger' : 'primary') + ' small" type="button" data-act="ag-tog" data-e="' + esc(a.email) + '">' + (on ? 'Dar de baja' : 'Reactivar') + '</button></div></article>';
-  }).join('') : emptyBox('Todavía no hay agentes', 'Agrega a tu primera persona de soporte arriba.');
+      (own ? '<button class="btn ' + (on ? 'danger' : 'primary') + ' small" type="button" data-act="ag-tog" data-e="' + esc(a.email) + '">' + (on ? 'Dar de baja' : 'Reactivar') + '</button>' : '') + '</div></article>';
+  };
+  h += ags.length ? ags.map(card).join('') : emptyBox('Todavía no hay agentes', own ? 'Agrega a tu primera persona de soporte arriba.' : 'El dueño todavía no agrega agentes.');
+  h += '<div class="subhead">Socios administradores (' + socs.length + ')</div>' + (socs.length ? socs.map(card).join('') : '<p class="hint">Todavía no hay socios.</p>');
   if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
 }
-async function agAdd() {
-  const name = ($('#ag-name').value || '').trim(), email = ($('#ag-mail').value || '').trim().toLowerCase();
+async function agAdd(pre, rol) {
+  pre = pre || 'ag'; if (S.isPartner || S.isAgent) return;
+  const name = ($('#' + pre + '-name').value || '').trim(), email = ($('#' + pre + '-mail').value || '').trim().toLowerCase();
   if (name.length < 2) { toast('Escribe el nombre del agente.'); return; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('Escribe un correo válido.'); return; }
-  try { await setDoc(doc(db, 'agentes', email), { email, name: name.slice(0, 60), activo: true, creadoEn: Date.now() }); $('#ag-name').value = ''; $('#ag-mail').value = ''; S.qrFor = email; render(); toast('Agente agregado. Ahí abajo está su QR.'); }
+  try { await setDoc(doc(db, 'agentes', email), Object.assign({ email, name: name.slice(0, 60), activo: true, creadoEn: Date.now() }, rol ? { rol } : {})); $('#' + pre + '-name').value = ''; $('#' + pre + '-mail').value = ''; S.qrFor = email; render(); toast(rol ? 'Socio agregado. Abajo está su QR.' : 'Agente agregado. Ahí abajo está su QR.'); }
   catch (e) { toast('No se pudo. ¿Ya pegaste las reglas de soporte en Firebase?'); }
 }
 async function agTog(email) {
