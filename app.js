@@ -424,7 +424,7 @@ function startRole() {
     listen(roleUnsubs, query(collection(db, 'movs'), where('driverId', '==', S.uid)), (snap) => { S.movs = snap.docs.map((d) => d.data()); render(); });
     listen(roleUnsubs, query(collection(db, 'recargas'), where('driverId', '==', S.uid)), (snap) => { S.recargas = snap.docs.map((d) => d.data()).filter((r) => r && r.id && r.estado); render(); });
     listen(roleUnsubs, doc(db, 'config', 'pago'), (s) => { S.pago = (s.exists() && s.data().texto) || ''; render(); });
-    listen(roleUnsubs, doc(db, 'config', 'zonas'), (s) => { S.zonas = (s.exists() && Array.isArray(s.data().zonas)) ? s.data().zonas : []; mergeOrders(); syncSheet(); render(); });
+    listen(roleUnsubs, doc(db, 'config', 'zonas'), (s) => { S.zonas = (s.exists() && Array.isArray(s.data().zonas)) ? s.data().zonas : []; S.radioKm = (s.exists() && Number(s.data().radioKm)) || 3; mergeOrders(); syncSheet(); render(); });
     listen(roleUnsubs, query(collection(db, 'ofertas'), where('driverId', '==', S.uid)), onOfertas);
   } else {
     listen(roleUnsubs, query(collection(db, 'ofertas'), where('shopId', '==', S.uid)), onOfertas);
@@ -596,6 +596,7 @@ function onOpenOrders(snap) {
   });
   S.openReady = true; S.openOrders = open; mergeOrders();
   if (S.online) fresh.forEach((o) => { try { distFor(o); } catch (e) {} });
+  if (rMode() === 'cerca' && S.pos) open.forEach((o) => { try { nearOk(o); } catch (e) {} });
   if (S.online && fresh.length) {
     fresh.sort((a, b) => b.creadoEn - a.creadoEn);
     let pushed = 0;
@@ -629,7 +630,7 @@ function startAdmin() {
   listen(unsubs, query(collection(db, 'movs'), orderBy('creadoEn', 'desc'), limit(1000)), (snap) => { S.movs = snap.docs.map((d) => d.data()); render(); });
   listen(unsubs, query(collection(db, 'presence'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = d.data(); }); S.presence = m; render(); });
   listen(unsubs, doc(db, 'config', 'pago'), (s) => { S.pago = (s.exists() && s.data().texto) || ''; render(); });
-  listen(unsubs, doc(db, 'config', 'zonas'), (s) => { S.zonas = (s.exists() && Array.isArray(s.data().zonas)) ? s.data().zonas : []; render(); });
+  listen(unsubs, doc(db, 'config', 'zonas'), (s) => { S.zonas = (s.exists() && Array.isArray(s.data().zonas)) ? s.data().zonas : []; S.radioKm = (s.exists() && Number(s.data().radioKm)) || 3; render(); });
   listen(unsubs, query(collection(db, 'incidencias'), orderBy('creadoEn', 'desc'), limit(200)), (snap) => {
     const arr = snap.docs.map((d) => d.data()).filter((x) => x && x.id && x.tipo);
     if (S.incReady) arr.forEach((x) => { if (x.estado === 'abierta' && !S.incMine.has(x.id)) { beep([880, 660, 880]); buzz(); toast('Incidencia de ' + (x.driverName || 'un repartidor') + ': ' + (INC_TIPOS[x.tipo] || x.tipo)); } });
@@ -2269,7 +2270,31 @@ function zoneOf(o) {
 }
 const zonesKey = () => 'gasca_zonas_' + S.uid;
 function myZones() { try { const a = JSON.parse(lsGet(zonesKey()) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+const modoKey = () => 'gasca_modo_' + S.uid;
+function rMode() { const m = lsGet(modoKey()) || 'cerca'; return m === 'zonas' && !(S.zonas && S.zonas.length) ? 'todos' : m; }
+function geoCached(txt) { const c = geoLoad(), k = nrm(txt); if (k in c) return c[k]; if (GEO.fail.has(k)) return null; return undefined; }
+function nearOk(o) {
+  if (!S.pos) return true;
+  const pt = geoCached(o.pickup);
+  if (pt === undefined) {
+    const k = nrm(o.pickup);
+    if (!GEO.pp.has(k)) { GEO.pp.add(k); geoPoint(o.pickup).then(() => { GEO.pp.delete(k); refilter(); }); }
+    return false;
+  }
+  if (!pt) return true;
+  return hav([S.pos.lat, S.pos.lon], pt) <= (S.radioKm || 3);
+}
+function refilter() {
+  if (S.role !== 'rider') return;
+  mergeOrders();
+  S.queue = S.queue.filter((qid) => { const o = byId(qid); return o && inMyZone(o); });
+  if (S.online) queueOpen();
+  syncSheet(); render();
+}
 function inMyZone(o) {
+  const mode = rMode();
+  if (mode === 'todos') return true;
+  if (mode === 'cerca') return nearOk(o);
   if (!S.zonas || !S.zonas.length) return true;
   const mine = myZones().filter((id) => S.zonas.some((z) => z.id === id));
   if (!mine.length) return true;
@@ -2288,7 +2313,7 @@ function zoneTag(o) { const z = zoneOf(o); return z ? '<br><small>📍 ' + esc(z
   function bar() {
     let el = document.getElementById('zoneBar');
     const head = document.getElementById('riderHead');
-    const show = head && view() === 'rider' && S.tab === 'disp' && S.zonas && S.zonas.length;
+    const show = head && view() === 'rider' && S.tab === 'disp' && rMode() === 'zonas' && S.zonas && S.zonas.length;
     if (!el && head) { el = document.createElement('div'); el.id = 'zoneBar'; head.after(el); }
     if (!el) return;
     el.hidden = !show; if (!show) return;
@@ -2314,11 +2339,11 @@ function zoneTag(o) { const z = zoneOf(o); return z ? '<br><small>📍 ' + esc(z
   const host = document.getElementById('adminAjustes'); if (!host) return;
   const ed = document.createElement('div'); ed.id = 'zonasEd'; ed.className = 'stack'; ed.hidden = true;
   host.after(ed);
-  let draft = null, dirty = false, lastSrc = '';
+  let draft = null, dirty = false, lastSrc = '', radio = 3;
   const src = () => JSON.stringify(S.zonas || []);
   function html() {
     const unk = []; (S.orders || []).forEach((o) => { if (o.pickup && !zoneOf(o) && unk.indexOf(o.pickup) < 0) unk.push(o.pickup); });
-    return '<h2 class="section">Zonas de trabajo</h2><p class="hint">Cada zona tiene un nombre y las colonias que cubre (sepáralas con comas). El repartidor elige en qué zona trabaja y solo le salen pedidos de esas zonas. Si una colonia no está en ninguna zona, el pedido le sale a todos.</p>' +
+    return '<h2 class="section">Zonas y pedidos cercanos</h2><div class="field"><label for="zn-radio">Radio para pedidos cercanos (km)</label><input type="number" id="zn-radio" min="0.5" max="20" step="0.5" inputmode="decimal" value="' + radio + '"></div><p class="hint">Los repartidores que eligen "Cerca de mí" reciben los pedidos que estén a ese radio de donde están, usando el GPS de su celular. Abajo, las zonas por colonia son otra opción. Cada zona tiene un nombre y las colonias que cubre (sepáralas con comas). El repartidor elige en qué zona trabaja y solo le salen pedidos de esas zonas. Si una colonia no está en ninguna zona, el pedido le sale a todos.</p>' +
       draft.map((z, i) => '<div class="zn"><div class="field"><label>Nombre de la zona</label><input type="text" maxlength="40" data-zi="' + i + '" data-zf="n" value="' + esc(z.nombre) + '" placeholder="Ej. Vistas de la Cantera"></div><div class="field"><label>Colonias que cubre</label><textarea data-zi="' + i + '" data-zf="c" maxlength="800" placeholder="Ej. Vistas de la Cantera, La Cantera, Fraccionamiento Los Sauces">' + esc((z.colonias || []).join(', ')) + '</textarea></div><button class="btn ghost small" type="button" data-zact="del" data-zi="' + i + '">Quitar zona</button></div>').join('') +
       '<button class="btn ghost block" type="button" data-zact="add">＋ Agregar zona</button><button class="btn primary block" type="button" data-zact="save" style="margin-top:10px">Guardar zonas</button>' +
       (unk.length ? '<p class="zs"><b>Recogidas recientes sin zona:</b><br>' + unk.slice(0, 8).map(esc).join('<br>') + '</p>' : '');
@@ -2326,13 +2351,15 @@ function zoneTag(o) { const z = zoneOf(o); return z ? '<br><small>📍 ' + esc(z
   function sync() {
     if (view() !== 'admin' || S.tab !== 'zonas') { ed.hidden = true; return; }
     ed.hidden = false;
-    if (!draft || (!dirty && lastSrc !== src())) { draft = JSON.parse(src()); lastSrc = src(); dirty = false; if (!draft.length) draft = []; }
+    if (!draft || (!dirty && lastSrc !== src())) { draft = JSON.parse(src()); lastSrc = src(); dirty = false; radio = S.radioKm || 3; if (!draft.length) draft = []; }
     if (ed.contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
     const h = html(); if (ed.dataset.h !== h) { ed.innerHTML = h; ed.dataset.h = h; }
   }
   setInterval(sync, 400);
   ed.addEventListener('input', (e) => {
-    const t = e.target, i = Number(t.getAttribute('data-zi')); if (!draft || isNaN(i) || !draft[i]) return;
+    const t = e.target;
+    if (t.id === 'zn-radio') { radio = t.value; dirty = true; return; }
+    const i = Number(t.getAttribute('data-zi')); if (!draft || isNaN(i) || !draft[i]) return;
     dirty = true;
     if (t.getAttribute('data-zf') === 'n') draft[i].nombre = t.value; else draft[i].colonias = t.value.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
   });
@@ -2344,7 +2371,8 @@ function zoneTag(o) { const z = zoneOf(o); return z ? '<br><small>📍 ' + esc(z
     else if (a === 'save') {
       const out = draft.map((z) => ({ id: z.id, nombre: String(z.nombre || '').trim().slice(0, 40), colonias: (z.colonias || []).map((c) => String(c).trim().slice(0, 60)).filter(Boolean).slice(0, 80) })).filter((z) => z.nombre);
       if (out.some((z) => !z.colonias.length)) { toast('Cada zona necesita al menos una colonia.'); return; }
-      try { await setDoc(doc(db, 'config', 'zonas'), { zonas: out, actualizado: Date.now() }); dirty = false; draft = null; lastSrc = ''; ed.dataset.h = ''; toast('Zonas guardadas.'); }
+      const rk = Math.min(20, Math.max(0.5, Number(radio) || 3));
+      try { await setDoc(doc(db, 'config', 'zonas'), { zonas: out, radioKm: rk, actualizado: Date.now() }); dirty = false; draft = null; lastSrc = ''; ed.dataset.h = ''; toast('Zonas guardadas.'); }
       catch (er) { toast('No se pudo guardar. Intenta de nuevo.'); }
     }
   });
@@ -2403,7 +2431,7 @@ async function switchRole() {
 }
 
 /* ---------- distancia aproximada del pedido (OpenStreetMap) ---------- */
-const GEO = { cache: null, q: [], busy: false, last: 0, pend: new Set() };
+const GEO = { cache: null, q: [], busy: false, last: 0, pend: new Set(), fail: new Set(), pp: new Set() };
 function geoLoad() { if (!GEO.cache) { try { GEO.cache = JSON.parse(lsGet('gasca_geo') || '{}') || {}; } catch (e) { GEO.cache = {}; } } return GEO.cache; }
 function geoSave() { try { const k = Object.keys(GEO.cache); if (k.length > 300) k.slice(0, 100).forEach((x) => delete GEO.cache[x]); lsSet('gasca_geo', JSON.stringify(GEO.cache)); } catch (e) {} }
 function geoQueries(txt) {
@@ -2434,6 +2462,7 @@ async function geoPump() {
       if (pt) break;
     }
     if (!failed) { c[it.key] = pt || 0; geoSave(); }
+    if (failed) GEO.fail.add(it.key);
     it.res(failed ? null : pt);
   }
   GEO.busy = false;
@@ -2456,9 +2485,66 @@ function distFor(o) {
   });
   return undefined;
 }
+function fmtKm(k) { return k < 1 ? Math.max(1, Math.round(k * 10)) * 100 + ' m' : (Math.round(k * 10) / 10).toString().replace('.0', '') + ' km'; }
 function distLine(o) {
   const d = distFor(o);
-  if (d === null) return '';
-  const txt = d === undefined ? '<small>calculando…</small>' : '<b>≈ ' + (d < 1 ? (Math.max(1, Math.round(d * 10)) * 100) + ' m' : (Math.round(d * 10) / 10).toString().replace('.0', '') + ' km') + '</b> <small>aprox. · © OpenStreetMap</small>';
-  return '<div class="line"><span class="k">Recorrido</span><span class="v">' + txt + '</span></div>';
+  let near = '';
+  if (S.pos) { const pt = geoCached(o.pickup); if (pt) near = '<div class="line"><span class="k">Estás a</span><span class="v"><b>' + fmtKm(hav([S.pos.lat, S.pos.lon], pt)) + '</b> de la recolección</span></div>'; }
+  if (d === null) return near;
+  const txt = d === undefined ? '<small>calculando…</small>' : '<b>≈ ' + fmtKm(d) + '</b> <small>aprox. · © OpenStreetMap</small>';
+  return near + '<div class="line"><span class="k">Recorrido</span><span class="v">' + txt + '</span></div>';
 }
+
+/* ---------- pedidos cerca de mí: GPS del repartidor, en movimiento ---------- */
+(function () {
+  let watchId = null, last = null;
+  function onPos(p) {
+    const c = p && p.coords; if (!c) return;
+    S.pos = { lat: c.latitude, lon: c.longitude, acc: c.accuracy || 0, t: Date.now() }; S.posErr = '';
+    if (!last || hav([last.lat, last.lon], [S.pos.lat, S.pos.lon]) > 0.12) { last = { lat: S.pos.lat, lon: S.pos.lon }; refilter(); } else render();
+  }
+  function onErr(e) { S.posErr = e && e.code === 1 ? 'denied' : 'fail'; render(); }
+  function ctl() {
+    const want = view() === 'rider' && S.online && rMode() === 'cerca' && 'geolocation' in navigator;
+    if (want && watchId === null) {
+      try { watchId = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 15000, timeout: 25000 }); } catch (e) { S.posErr = 'fail'; }
+    } else if (!want && watchId !== null) {
+      try { navigator.geolocation.clearWatch(watchId); } catch (e) {} watchId = null;
+      if (view() !== 'rider' || !S.online) { S.pos = null; last = null; }
+    }
+  }
+  setInterval(ctl, 1500);
+  const st = document.createElement('style');
+  st.textContent = '#modeBar{margin:10px 0 4px}#modeBar .zl{display:block;font-weight:800;margin:0 0 6px}#modeBar .zc{display:flex;flex-wrap:wrap;gap:8px}#modeBar button{border:2px solid var(--line,#cfd6de);background:#fff;border-radius:99px;padding:8px 14px;min-height:42px;font:inherit;font-weight:700;color:inherit}#modeBar button.on{background:#f6b400;border-color:#f6b400;color:#16202a}#modeBar .ms{margin:8px 0 0;font-size:14px;font-weight:600;opacity:.8}#modeBar .ms.bad{color:#b3261e;opacity:1}';
+  document.head.appendChild(st);
+  let sig = '';
+  function bar() {
+    let el = document.getElementById('modeBar');
+    const head = document.getElementById('riderHead');
+    const show = head && view() === 'rider' && S.tab === 'disp';
+    if (!el && head) { el = document.createElement('div'); el.id = 'modeBar'; head.after(el); }
+    if (!el) return;
+    el.hidden = !show; if (!show) return;
+    const m = rMode(), km = S.radioKm || 3;
+    let msg = '', bad = '';
+    if (m === 'cerca') {
+      if (!('geolocation' in navigator)) { msg = 'Tu celular no permite usar la ubicación. Elige "Todos".'; bad = ' bad'; }
+      else if (!S.online) msg = 'Ponte En línea para buscar pedidos cerca de ti.';
+      else if (S.posErr === 'denied') { msg = 'Activa el permiso de ubicación de Gasca en tu celular para recibir pedidos cercanos.'; bad = ' bad'; }
+      else if (!S.pos) msg = 'Buscando tu ubicación…';
+      else msg = '✔ Ubicación activa. Te llegan pedidos a menos de ' + km + ' km de donde estás, aunque te muevas.';
+    }
+    const s2 = m + '|' + km + '|' + msg + '|' + (S.zonas && S.zonas.length);
+    if (s2 === sig && el.innerHTML) return; sig = s2;
+    el.innerHTML = '<span class="zl">¿Qué pedidos quieres recibir?</span><div class="zc">' +
+      '<button type="button" data-modo="cerca" class="' + (m === 'cerca' ? 'on' : '') + '">📍 Cerca de mí · ' + km + ' km</button>' +
+      (S.zonas && S.zonas.length ? '<button type="button" data-modo="zonas" class="' + (m === 'zonas' ? 'on' : '') + '">🗺️ Por zonas</button>' : '') +
+      '<button type="button" data-modo="todos" class="' + (m === 'todos' ? 'on' : '') + '">🌐 Todos</button></div>' + (msg ? '<p class="ms' + bad + '">' + esc(msg) + '</p>' : '');
+  }
+  setInterval(bar, 400);
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('[data-modo]'); if (!b) return;
+    lsSet(modoKey(), b.getAttribute('data-modo')); sig = '';
+    refilter(); bar(); ctl();
+  });
+})();
