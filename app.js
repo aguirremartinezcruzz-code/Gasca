@@ -1758,6 +1758,7 @@ function askIssue(id) {
       const nota = document.getElementById('issueNote').value.trim().slice(0, 300), iid = newId();
       try {
         await setDoc(doc(db, 'incidencias', iid), { id: iid, orderId: id, driverId: S.uid, driverName: S.name || 'Repartidor', shop: o.shop || '', folio: folio(id), tipo, nota, estado: 'abierta', creadoEn: Date.now() });
+        lsSet('gasca_naSent_' + id, '1'); render();
         draw({ nota });
       } catch (e) { const er = document.getElementById('issueErr'); if (er) er.textContent = 'No se pudo enviar. Escríbenos por WhatsApp.'; btn.disabled = false; }
     });
@@ -1863,7 +1864,7 @@ function renderIncid(el) {
       (S.libs && S.libs[x.orderId] && o && o.estado === 'recogido' ? '<div class="paynote">Código de liberación: <b style="font-size:26px;letter-spacing:4px">' + esc(S.libs[x.orderId]) + '</b><br><small>Díctaselo al repartidor después de hablar con el cliente y el restaurante.</small></div>' : '') +
       (o && o.liberado ? '<div class="line"><span class="k">Resultado</span><span class="v"><b>🔑 Liberado por administración</b></span></div>' : '') +
       (open ? '<div class="actions">' +
-        (o && o.estado === 'recogido' && NOANS_RE.test(x.nota || '') ? '<button class="btn primary small" type="button" data-act="inc-code" data-id="' + esc(x.id) + '" data-oid="' + esc(x.orderId) + '"' + (busy ? ' disabled' : '') + '>🔑 Código de liberación</button>' +
+        (o && o.estado === 'recogido' && o.driverId ? '<button class="btn primary small" type="button" data-act="inc-code" data-id="' + esc(x.id) + '" data-oid="' + esc(x.orderId) + '"' + (busy ? ' disabled' : '') + '>🔑 Código de liberación</button>' +
           '<button class="btn ghost small" type="button" data-act="inc-release" data-id="' + esc(x.id) + '" data-oid="' + esc(x.orderId) + '"' + (busy ? ' disabled' : '') + '>Liberar yo (sin código)</button>' : '') +
         (live ? '<button class="btn ghost small" type="button" data-act="inc-reopen" data-id="' + esc(x.id) + '" data-oid="' + esc(x.orderId) + '"' + (busy ? ' disabled' : '') + '>Reasignar pedido</button>' +
           '<button class="btn danger small" type="button" data-act="inc-cancel" data-id="' + esc(x.id) + '" data-oid="' + esc(x.orderId) + '"' + (busy ? ' disabled' : '') + '>Cancelar pedido</button>' : '') +
