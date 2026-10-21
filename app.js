@@ -198,7 +198,8 @@ function myStatus() {
 function view() {
   if (!S.ready || S.creating) return 'loading';
   if (!S.user) return 'auth';
-  if (S.ownerEmail && !S.isAdmin) return 'owner';
+  if (S.agChk) return 'loading';
+  if (S.staffUnver || (S.ownerEmail && !S.isAdmin)) return 'owner';
   if (S.isAdmin) return 'admin';
   const st = myStatus();
   if (st === 'cargando') return 'loading';
@@ -226,11 +227,11 @@ function setMode(m) {
   if (m === 'signup' && S.authMode !== 'signup') [...af.querySelectorAll('input[name=role]')].forEach((r) => { r.checked = false; });
   S.authMode = m; S.authErr = '';
   const su = m === 'signup', ow = m === 'owner', pr = m === 'profile', form = su || pr;
-  $('#authTitle').textContent = { login: 'Entrar', signup: 'Crear cuenta', owner: 'Dueño', profile: 'Completa tu cuenta' }[m];
+  $('#authTitle').textContent = { login: 'Entrar', signup: 'Crear cuenta', owner: 'Administración', profile: 'Completa tu cuenta' }[m];
   $('#authLede').textContent = {
     login: 'Entra con tu correo y tu contraseña.',
     signup: 'Crea tu cuenta una sola vez. Después entras con tu correo y tu contraseña.',
-    owner: 'Solo para el dueño de Gasca.',
+    owner: 'Para el dueño y el equipo de soporte de Gasca.',
     profile: 'Elige quién eres para terminar de crear tu cuenta.'
   }[m];
   $('#authRoles').hidden = !form;
@@ -242,7 +243,7 @@ function setMode(m) {
   $('#a-name').placeholder = roleVal() === 'shop' ? 'Ej. Pizzería La Esquina' : 'Ej. Juan Pérez';
   $('#a-pass').autocomplete = su ? 'new-password' : 'current-password';
   $('#authBtn').textContent = { login: 'Entrar', signup: 'Crear cuenta', owner: 'Entrar', profile: 'Guardar' }[m];
-  $('#authBtn2').hidden = !ow;
+  $('#authBtn2').hidden = !ow; $('#authBtn2').textContent = 'Crear mi cuenta (dueño o soporte)';
   { const cl = form && roleVal() === 'cliente';
     $('#fEmail').hidden = pr || cl; $('#fTel').hidden = !((su || (pr && !telOf(S.email))) && cl);
     $('#a-email').type = 'text';
@@ -300,7 +301,8 @@ af.addEventListener('submit', async (e) => {
   try {
     if (m === 'login' || m === 'owner') {
       if (!email || !pass) return fail('Escribe tu correo o teléfono y tu contraseña.');
-      if (m === 'owner' && (!OWNER_OK || email !== OWNER)) return fail('Ese correo no es el del dueño.');
+      if (m === 'owner' && email.indexOf('@') < 0) return fail('Escribe tu correo.');
+      if (m === 'owner' && email !== OWNER) { try { localStorage.setItem('gasca_staff', email); } catch (e) {} }
       setBusy(true);
       await signInWithEmailAndPassword(auth, email, pass);
     } else if (m === 'signup') {
@@ -326,7 +328,8 @@ af.addEventListener('submit', async (e) => {
 async function ownerCreate() {
   if (S.authBusy) return;
   const email = $('#a-email').value.trim().toLowerCase(), pass = $('#a-pass').value;
-  if (!OWNER_OK || email !== OWNER) { S.authErr = 'Ese correo no es el del dueño.'; showErr(); return; }
+  if (email.indexOf('@') < 0) { S.authErr = 'Escribe tu correo.'; showErr(); return; }
+  if (email !== OWNER) { try { localStorage.setItem('gasca_staff', email); } catch (e) {} }
   if (pass.length < 6) { S.authErr = 'La contraseña debe tener al menos 6 caracteres.'; showErr(); return; }
   S.authErr = ''; showErr(); setBusy(true);
   try {
@@ -339,7 +342,7 @@ async function ownerCheck() {
   const u = auth.currentUser; if (!u) return;
   try { await reload(u); await u.getIdToken(true); } catch (e) { toast('No se pudo revisar. Intenta de nuevo.'); return; }
   bootstrap(auth.currentUser);
-  if (!S.isAdmin) toast('Todavía no aparece verificado. Toca el enlace del correo y vuelve a intentar.');
+  if (!S.isAdmin && !S.agChk) toast('Todavía no aparece verificado. Toca el enlace del correo y vuelve a intentar.');
 }
 async function ownerResend() {
   try { await sendEmailVerification(auth.currentUser); toast('Te enviamos el correo otra vez.'); } catch (e) { toast('Espera un momento antes de pedirlo de nuevo.'); }
@@ -371,9 +374,28 @@ function bootstrap(u) {
   S.ownerEmail = OWNER_OK && S.email === OWNER;
   S.isAdmin = S.ownerEmail && u.emailVerified === true;
   if (S.ownerEmail && !S.isAdmin) { render(); return; }
+  S.isAgent = false; S.agChk = false; S.staffUnver = false; S.agentName = '';
   if (S.isAdmin) { S.tab = 'inicio'; startAdmin(); render(); return; }
+  let staff = ''; try { staff = localStorage.getItem('gasca_staff') || ''; } catch (e) {}
+  if (staff && staff === S.email) {
+    if (u.emailVerified !== true) { S.staffUnver = true; render(); return; }
+    S.agChk = true; render();
+    getDoc(doc(db, 'agentes', S.email)).then((sn) => {
+      if (S.uid !== u.uid) return;
+      S.agChk = false;
+      const d = sn.exists() ? sn.data() : null;
+      if (d && d.activo !== false) { S.isAdmin = true; S.isAgent = true; S.agentName = d.name || 'Soporte'; S.tab = 'inicio'; startAdmin(); render(); }
+      else staffDeny('Este correo no está dado de alta como agente de soporte. Pídele al dueño que te agregue.');
+    }).catch(() => { if (S.uid !== u.uid) return; S.agChk = false; staffDeny('No se pudo entrar a soporte. Avisa al dueño.'); });
+    return;
+  }
   startPerson();
   render();
+}
+function staffDeny(msg) {
+  try { localStorage.removeItem('gasca_staff'); } catch (e) {}
+  toast(msg); stopAll(); resetData();
+  signOut(auth).catch(() => {});
 }
 onAuthStateChanged(auth, (u) => bootstrap(u));
 
@@ -626,9 +648,10 @@ function startAdmin() {
   listen(unsubs, query(collection(db, 'orders'), orderBy('creadoEn', 'desc'), limit(200)), (snap) => { S.myOrders = orderDocs(snap); mergeOrders(); render(); });
   listen(unsubs, query(collection(db, 'users'), limit(500)), (snap) => { S.users = snap.docs.map((d) => d.data()).filter((u) => u && u.id && u.role && u.name); render(); });
   listen(unsubs, query(collection(db, 'aprobaciones'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = d.data(); }); S.aprobs = m; render(); assignRepNos(); });
-  listen(unsubs, query(collection(db, 'recargas'), orderBy('creadoEn', 'desc'), limit(300)), (snap) => { S.recargas = snap.docs.map((d) => d.data()).filter((r) => r && r.id && r.estado); render(); });
+  if (!S.isAgent) listen(unsubs, query(collection(db, 'recargas'), orderBy('creadoEn', 'desc'), limit(300)), (snap) => { S.recargas = snap.docs.map((d) => d.data()).filter((r) => r && r.id && r.estado); render(); });
+  if (!S.isAgent) listen(unsubs, query(collection(db, 'agentes'), limit(50)), (snap) => { S.agentes = snap.docs.map((d) => d.data()).filter((a) => a && a.email); render(); });
   listen(unsubs, query(collection(db, 'wallets'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = d.data(); }); S.wallets = m; render(); });
-  listen(unsubs, query(collection(db, 'movs'), orderBy('creadoEn', 'desc'), limit(1000)), (snap) => { S.movs = snap.docs.map((d) => d.data()); render(); });
+  if (!S.isAgent) listen(unsubs, query(collection(db, 'movs'), orderBy('creadoEn', 'desc'), limit(1000)), (snap) => { S.movs = snap.docs.map((d) => d.data()); render(); });
   listen(unsubs, query(collection(db, 'presence'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = d.data(); }); S.presence = m; render(); });
   listen(unsubs, doc(db, 'config', 'pago'), (s) => { S.pago = (s.exists() && s.data().texto) || ''; render(); });
   listen(unsubs, doc(db, 'config', 'zonas'), (s) => { S.zonas = (s.exists() && Array.isArray(s.data().zonas)) ? s.data().zonas : []; S.radioKm = (s.exists() && Number(s.data().radioKm)) || 3; render(); });
@@ -1344,6 +1367,8 @@ function renderAdmin() {
   $('#adminSearch').hidden = S.tab !== 'recargas'; $('#adminAjustes').hidden = S.tab !== 'ajustes';
   $('#adminMonitor').hidden = S.tab !== 'monitor';
   $('#adminAltas').hidden = S.tab !== 'altas';
+  if (S.isAgent && S.tab !== 'inicio' && ['monitor', 'pedidos', 'incidencias'].indexOf(S.tab) < 0) S.tab = 'inicio';
+  const sp = spDiv(); sp.hidden = S.tab !== 'soporte' || S.isAgent; if (!sp.hidden) renderSoporte(sp);
   const pd = pedDiv(); pd.hidden = S.tab !== 'pedidos'; if (S.tab === 'pedidos') renderPedidos(pd);
   const ic = incDiv(); ic.hidden = S.tab !== 'incidencias';
   if (S.tab === 'incidencias') renderIncid(ic);
@@ -1376,16 +1401,18 @@ function renderAdmin() {
       : emptyBox('Sin repartidores todavía', 'Aquí ves el saldo de cada repartidor cuando recargue o entregue su primer pedido.');
     sd.innerHTML = t;
   }
-  return [
+  const all = [
     { id: 'monitor', label: 'En vivo', badge: S.orders.filter((o) => o.estado === 'abierto').length },
     { id: 'altas', label: 'Altas', badge: S.users.filter((u) => personStatus(u, S.aprobs[u.id]) === 'revision').length },
     { id: 'recargas', label: 'Recargas', badge: pend.length },
     { id: 'pedidos', label: 'Pedidos', badge: S.orders.filter((o) => o.estado === 'asignado' || o.estado === 'recogido').length },
     { id: 'incidencias', label: 'Incidencias', badge: S.incs.filter((x) => x.estado === 'abierta').length },
     { id: 'saldos', label: 'Saldos' },
+    { id: 'soporte', label: 'Soporte', badge: 0 },
     { id: 'zonas', label: 'Radio' },
     { id: 'ajustes', label: 'Depósito' }
   ];
+  return S.isAgent ? all.filter((t) => t.id === 'monitor' || t.id === 'pedidos' || t.id === 'incidencias') : all;
 }
 
 function whoSet(t) { const n = document.getElementById('whoName'); if (n && n.textContent !== t) n.textContent = t; }
@@ -1412,12 +1439,12 @@ function render() {
   show('#viewAdmin', v === 'admin');
   if (v === 'profile' && S.authMode !== 'profile') setMode('profile');
   if (v === 'auth' && S.authMode === 'profile') setMode('login');
-  if (v === 'owner') $('#ownerMail').textContent = 'Correo: ' + S.email;
+  if (v === 'owner') { $('#ownerMail').textContent = 'Correo: ' + S.email; const ll = document.querySelector('#viewOwner .lede'); if (ll) ll.textContent = S.staffUnver ? 'Para entrar a soporte, abre el correo que te enviamos y toca el enlace de verificación. Revisa también la carpeta de spam.' : 'Para entrar como dueño, abre el correo que te enviamos y toca el enlace de verificación. Revisa también la carpeta de spam.'; }
   const who = $('#who');
   who.hidden = !S.user || v === 'loading';
   { const n0 = document.getElementById('whoName'); if (n0) n0.hidden = who.hidden; }
   { const hm = !!S.user && (v === 'shop' || v === 'rider'); who.classList.toggle('has-menu', hm); const lb = hm ? '☰ Menú' : 'Salir'; if (who.textContent !== lb) who.textContent = lb; }
-  if (S.user) whoSet(v === 'admin' ? 'Dueño' : (S.name ? (isCli(S.profile) ? 'Envío personal · ' : { shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + (S.role === 'rider' && S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') + ' · ' : '') + S.name : 'Salir'));
+  if (S.user) whoSet(v === 'admin' ? (S.isAgent ? 'Soporte · ' + S.agentName : 'Dueño') : (S.name ? (isCli(S.profile) ? 'Envío personal · ' : { shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + (S.role === 'rider' && S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') + ' · ' : '') + S.name : 'Salir'));
   renderBanner();
   if (v !== 'rider') { S.sheetId = null; if (!$('#sheet').hidden) { $('#sheet').hidden = true; S.sheetKey = ''; } }
   let tabs = null;
@@ -1518,6 +1545,10 @@ document.addEventListener('click', (e) => {
   else if (act === 'swr-close') { S.swr = false; render(); }
   else if (act === 'swr-pick') { S.swrRole = b.getAttribute('data-r'); render(); }
   else if (act === 'swr-go') switchRole();
+  else if (act === 'ag-add') agAdd();
+  else if (act === 'ag-tog') agTog(b.getAttribute('data-e'));
+  else if (act === 'ag-work') { S.incAg = b.getAttribute('data-e'); S.tab = 'incidencias'; render(); }
+  else if (act === 'inc-ag') { S.incAg = b.getAttribute('data-e'); render(); }
   else if (act === 'ped-f') { S.pedF = b.getAttribute('data-f'); render(); }
   else if (act === 'tab') { S.tab = b.getAttribute('data-tab'); S.cancelId = null; render(); }
   else if (act === 'cancel') { S.cancelId = id; render(); }
@@ -1871,6 +1902,23 @@ function ordStatus(o) {
   return { t: 'Esperando repartidor', cls: 'abierto' };
 }
 function destParts(d) { const m = String(d || '').split(' — Ref: '); return { dir: m[0], ref: m[1] || '' }; }
+function incOf(o) { return S.incs.filter((x) => x.orderId === o.id).sort((a, b) => b.creadoEn - a.creadoEn)[0]; }
+function cleanNota(n) { return String(n || '').replace(/ ?· ?Tel \d{10}/, '').replace(/ ?· ?GPS [-\d.,]+/, '').replace(/^NO CONTESTAN · /, '').trim(); }
+function noReason(o) {
+  if (o.motivoNo) return o.motivoNo;
+  const x = incOf(o), noans = x && NOANS_RE.test(x.nota || '');
+  const prob = x ? (noans ? 'nadie contestó en la entrega' : String(INC_TIPOS[x.tipo] || x.tipo).toLowerCase()) : '';
+  const nota = x && !noans ? cleanNota(x.nota) : '';
+  const by = x && x.atendidaPor ? ' Atendió: ' + x.atendidaPor + '.' : '';
+  if (o.estado === 'entregado' && o.liberado) return 'No se entregó al cliente: ' + (prob || 'sin respuesta en el domicilio') + '. Soporte liberó al repartidor para que se le registrara el viaje.' + (nota ? ' Nota del repartidor: ' + nota + '.' : '') + by;
+  if (o.estado === 'cancelado') {
+    if (x && o.driverId) return 'Soporte canceló el pedido tras el reporte del repartidor (' + prob + ').' + (nota ? ' Nota: ' + nota + '.' : '') + by;
+    if (x) return 'Soporte canceló el pedido tras un reporte (' + prob + ').' + by;
+    return o.driverId ? 'Pedido cancelado.' : 'Ningún repartidor tomó el pedido: el negocio lo canceló, cambió la oferta o se venció la espera.';
+  }
+  return '';
+}
+const byMe = () => ({ atendidaPor: S.isAgent ? S.agentName : 'Dueño', atendidaPorEmail: S.email });
 function orderBlock(o, x) {
   const st = ordStatus(o), dp = destParts(o && o.dest);
   return '<div class="subhead" style="margin:12px 0 4px">Datos del pedido</div>' +
@@ -1879,7 +1927,43 @@ function orderBlock(o, x) {
     (o ? '<div class="line"><span class="k">Dirección de entrega</span><span class="v">' + esc(dp.dir) + '</span></div>' : '') +
     (o && dp.ref ? '<div class="line"><span class="k">Referencia</span><span class="v">' + esc(dp.ref) + '</span></div>' : '') +
     (o && o.driverName ? '<div class="line"><span class="k">Repartidor</span><span class="v">' + esc(o.driverName) + '</span></div>' : '') +
-    '<div class="line"><span class="k">Estado del pedido</span><span class="v"><b>' + esc(st.t) + '</b></span></div>';
+    '<div class="line"><span class="k">Estado del pedido</span><span class="v"><b>' + esc(st.t) + '</b></span></div>' +
+    (o && (o.estado === 'cancelado' || (o.estado === 'entregado' && o.liberado)) ? '<div class="line"><span class="k">Por qué no se entregó</span><span class="v">' + esc(noReason(o)) + '</span></div>' : '');
+}
+function spDiv() {
+  let el = document.getElementById('adminSoporte');
+  if (!el) { el = document.createElement('div'); el.id = 'adminSoporte'; el.className = 'stack'; el.hidden = true; const ref = document.getElementById('adminSaldos'); ref.parentNode.insertBefore(el, ref.nextSibling); }
+  return el;
+}
+function renderSoporte(el) {
+  const ags = (S.agentes || []).slice().sort((a, b) => (a.creadoEn || 0) - (b.creadoEn || 0));
+  const fld = (id, lb, ph, ty) => '<div class="field"><label for="' + id + '">' + lb + '</label><input id="' + id + '" type="' + ty + '" maxlength="80" placeholder="' + ph + '" autocomplete="off"></div>';
+  let h = '<h2 class="section">Equipo de soporte</h2><p class="hint">Cada agente entra con su propio correo y contraseña. Todo lo que atiende queda guardado con su nombre en Incidencias.</p>';
+  h += '<article class="order"><div class="subhead" style="margin:0 0 6px">Agregar un agente</div>' + fld('ag-name', 'Nombre del agente', 'Ej. María López', 'text') + fld('ag-mail', 'Correo del agente', 'correo@ejemplo.com', 'email') +
+    '<button class="btn primary block" type="button" data-act="ag-add">Agregar agente</button>' +
+    '<p class="hint">Después dile que abra Gasca, toque <b>Administración</b>, escriba ese correo, cree su contraseña con <b>Crear mi cuenta</b> y verifique su correo.</p></article>';
+  h += '<div class="subhead">Agentes (' + ags.length + ')</div>';
+  h += ags.length ? ags.map((a) => {
+    const mine = S.incs.filter((x) => x.estado !== 'abierta' && x.atendidaPorEmail === a.email);
+    const last = mine.reduce((m, x) => Math.max(m, x.atendidaEn || 0), 0), on = a.activo !== false;
+    return '<article class="order"><div class="head"><span class="folio">' + esc(a.name) + '</span><span class="chip ' + (on ? 'entregado' : '') + '">' + (on ? 'Activo' : 'De baja') + '</span></div>' +
+      '<div class="line"><span class="k">Correo</span><span class="v">' + esc(a.email) + '</span></div>' +
+      '<div class="line"><span class="k">Incidencias atendidas</span><span class="v"><b>' + mine.length + '</b>' + (last ? ' · la última ' + ago(last) : '') + '</span></div>' +
+      '<div class="actions"><button class="btn ghost small" type="button" data-act="ag-work" data-e="' + esc(a.email) + '">Ver su trabajo</button>' +
+      '<button class="btn ' + (on ? 'danger' : 'primary') + ' small" type="button" data-act="ag-tog" data-e="' + esc(a.email) + '">' + (on ? 'Dar de baja' : 'Reactivar') + '</button></div></article>';
+  }).join('') : emptyBox('Todavía no hay agentes', 'Agrega a tu primera persona de soporte arriba.');
+  if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
+}
+async function agAdd() {
+  const name = ($('#ag-name').value || '').trim(), email = ($('#ag-mail').value || '').trim().toLowerCase();
+  if (name.length < 2) { toast('Escribe el nombre del agente.'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('Escribe un correo válido.'); return; }
+  try { await setDoc(doc(db, 'agentes', email), { email, name: name.slice(0, 60), activo: true, creadoEn: Date.now() }); $('#ag-name').value = ''; $('#ag-mail').value = ''; toast('Agente agregado.'); }
+  catch (e) { toast('No se pudo. ¿Ya pegaste las reglas de soporte en Firebase?'); }
+}
+async function agTog(email) {
+  const a = (S.agentes || []).find((x) => x.email === email); if (!a) return;
+  try { await updateDoc(doc(db, 'agentes', email), { activo: a.activo === false }); toast(a.activo === false ? 'Agente reactivado.' : 'Agente dado de baja.'); } catch (e) { toast('No se pudo. Intenta de nuevo.'); }
 }
 function pedDiv() {
   let el = document.getElementById('adminPedidos');
@@ -1917,14 +2001,20 @@ function renderPedidos(el) {
   if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
 }
 function renderIncid(el) {
-  const list = S.incs.slice().sort((a, b) => (a.estado === b.estado ? b.creadoEn - a.creadoEn : (a.estado === 'abierta' ? -1 : 1)));
+  const fl = S.incAg || '';
+  const list = S.incs.filter((x) => !fl || (fl === 'open' ? x.estado === 'abierta' : x.atendidaPorEmail === fl || (fl === 'dueno' && x.estado !== 'abierta' && x.atendidaPor === 'Dueño'))).sort((a, b) => (a.estado === b.estado ? b.creadoEn - a.creadoEn : (a.estado === 'abierta' ? -1 : 1)));
   let h = '<h2 class="section">Incidencias</h2>';
+  if (!S.isAgent && (S.agentes || []).length) {
+    const chip = (v, t) => '<button type="button" class="btn ' + (fl === v ? 'primary' : 'ghost') + ' small" data-act="inc-ag" data-e="' + esc(v) + '">' + esc(t) + '</button>';
+    h += '<div class="actions" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">' + chip('', 'Todas') + chip('open', 'Sin atender') + chip('dueno', 'Dueño') + S.agentes.map((a) => chip(a.email, a.name)).join('') + '</div>';
+  }
   if (!list.length) { el.innerHTML = h + emptyBox('Sin incidencias', 'Cuando un repartidor reporte un problema en un pedido, aparece aquí.'); return; }
   h += list.map((x) => {
     const o = byId(x.orderId), open = x.estado === 'abierta', busy = S.busy.has('in' + x.id);
     const live = o && (o.estado === 'asignado' || o.estado === 'recogido');
     const wa = supportUrl('').split('?')[0];
     return '<article class="order"><div class="head"><span class="folio">' + esc(x.driverName || 'Repartidor') + '</span><span class="chip ' + (open ? 'abierto' : 'entregado') + '">' + (open ? 'Sin atender' : 'Atendida') + '</span><span class="ago">' + ago(x.creadoEn) + '</span></div>' +
+      (!open ? '<div class="line"><span class="k">Atendió</span><span class="v"><b>' + esc(x.atendidaPor || 'Sin registro (antes de soporte)') + '</b>' + (x.atendidaEn ? ' · ' + new Date(x.atendidaEn).toLocaleString('es-MX') : '') + ' · ' + esc({ liberado: 'Liberó el pedido', cancelado: 'Canceló el pedido', reasignado: 'Reasignó el pedido', atendida: 'Marcó atendida' }[x.accion] || 'Marcó atendida') + '</span></div>' : '') +
       '<div class="line"><span class="k">Problema</span><span class="v"><b>' + (NOANS_RE.test(x.nota || '') ? '📵 Nadie contesta en la entrega' : esc(INC_TIPOS[x.tipo] || x.tipo)) + '</b></span></div>' +
       (x.nota ? '<div class="line"><span class="k">Nota</span><span class="v">' + esc(x.nota) + noansMap(x.nota) + '</span></div>' : '') +
       (() => { const mt = /Tel (\d{10})/.exec(x.nota || ''); return mt ? '<div class="links"><a href="' + esc(waUrl(mt[1])) + '" target="_blank" rel="noopener">💬 WhatsApp al repartidor</a><a href="tel:' + mt[1] + '">📞 Llamar ' + mt[1] + '</a></div>' : '<div class="line"><span class="k">Contacto</span><span class="v"><small>Este aviso no trae teléfono. Los nuevos avisos sí lo traen.</small></span></div>'; })() +
@@ -1946,23 +2036,25 @@ async function incAct(id, fn, okMsg) {
   try { await fn(); toast(okMsg); } catch (e) { toast('No se pudo. Intenta de nuevo.'); }
   S.busy.delete('in' + id); render();
 }
-const incDone = (id) => incAct(id, () => updateDoc(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: Date.now() }), 'Incidencia atendida.');
+const incDone = (id) => incAct(id, () => updateDoc(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: Date.now(), accion: 'atendida', ...byMe() }), 'Incidencia atendida.');
 const incReopen = (id, oid) => incAct(id, async () => {
   await updateDoc(doc(db, 'orders', oid), { estado: 'abierto', driverId: '', driverName: '', asignadoEn: null, recogidoEn: null });
-  await updateDoc(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: Date.now(), accion: 'reasignado' });
+  await updateDoc(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: Date.now(), accion: 'reasignado', ...byMe() });
 }, 'Pedido liberado para otro repartidor.');
 const incRelease = (id, oid) => incAct(id, async () => {
   const o = byId(oid); if (!o || o.estado !== 'recogido' || !o.driverId) throw new Error('state');
   const com = (Number(o.tarifa) || 0) * COM_C, now = Date.now(), b = writeBatch(db);
-  b.update(doc(db, 'orders', oid), { estado: 'entregado', entregadoEn: now, liberado: true, liberadoMotivo: 'nadie contesto' });
+  b.update(doc(db, 'orders', oid), { estado: 'entregado', entregadoEn: now, liberado: true, liberadoMotivo: 'nadie contesto', liberadoPor: byMe().atendidaPor });
   b.update(doc(db, 'wallets', o.driverId), { saldoC: increment(-com) });
   b.set(doc(db, 'movs', 'cm_' + oid), { driverId: o.driverId, tipo: 'comision', montoC: -com, orderId: oid, creadoEn: now });
-  b.update(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: now, accion: 'liberado' });
+  b.update(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: now, accion: 'liberado', ...byMe() });
   await b.commit();
 }, 'Pedido liberado como entregado. Se cobró la comisión.');
 const incCancel = (id, oid) => incAct(id, async () => {
-  await updateDoc(doc(db, 'orders', oid), { estado: 'cancelado', canceladoEn: Date.now() });
-  await updateDoc(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: Date.now(), accion: 'cancelado' });
+  const x = S.incs.find((i) => i.id === id), noans = x && NOANS_RE.test(x.nota || '');
+  const mot = 'Soporte canceló el pedido tras el reporte del repartidor (' + (noans ? 'nadie contestó en la entrega' : String((x && (INC_TIPOS[x.tipo] || x.tipo)) || 'problema').toLowerCase()) + ').' + (x && !noans && cleanNota(x.nota) ? ' Nota: ' + cleanNota(x.nota) + '.' : '') + ' Atendió: ' + byMe().atendidaPor + '.';
+  await updateDoc(doc(db, 'orders', oid), { estado: 'cancelado', canceladoEn: Date.now(), canceladoPor: 'soporte', motivoNo: mot.slice(0, 300) });
+  await updateDoc(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: Date.now(), accion: 'cancelado', ...byMe() });
 }, 'Pedido cancelado.');
 
 (function () {
@@ -2563,7 +2655,7 @@ function zoneTag(o) { const z = zoneOf(o); return z ? '<br><small>📍 ' + esc(z
     '#adminBack{display:none;margin:0 0 6px}#adminBack button{background:#fff;border:2px solid var(--line,#cfd6de);border-radius:14px;font:inherit;font-weight:800;padding:10px 16px;min-height:46px;color:inherit}.ah-in #adminBack{display:block}';
   document.head.appendChild(st);
 })();
-const AH = { monitor: ['📡', 'En vivo', 'Pedidos y repartidores ahora'], altas: ['🧾', 'Altas', 'Aprobar o dar de baja'], recargas: ['💵', 'Recargas', 'Pagos de repartidores'], pedidos: ['📦', 'Pedidos', 'Por atender, con éxito y no entregados'], incidencias: ['⚠️', 'Incidencias', 'Reportes y accidentes'], saldos: ['👛', 'Saldos', 'Lo que tiene cada repartidor'], zonas: ['📍', 'Radio', 'Distancia de pedidos cercanos'], ajustes: ['🏦', 'Depósito', 'Datos para recargar'] };
+const AH = { monitor: ['📡', 'En vivo', 'Pedidos y repartidores ahora'], altas: ['🧾', 'Altas', 'Aprobar o dar de baja'], recargas: ['💵', 'Recargas', 'Pagos de repartidores'], soporte: ['🎧', 'Soporte', 'Agentes y su trabajo'], pedidos: ['📦', 'Pedidos', 'Por atender, con éxito y no entregados'], incidencias: ['⚠️', 'Incidencias', 'Reportes y accidentes'], saldos: ['👛', 'Saldos', 'Lo que tiene cada repartidor'], zonas: ['📍', 'Radio', 'Distancia de pedidos cercanos'], ajustes: ['🏦', 'Depósito', 'Datos para recargar'] };
 function adminHome(list) {
   const host = $('#adminMonitor'); if (!host) return;
   let el = document.getElementById('adminHome');
