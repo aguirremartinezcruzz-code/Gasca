@@ -370,7 +370,7 @@ function bootstrap(u) {
   S.ownerEmail = OWNER_OK && S.email === OWNER;
   S.isAdmin = S.ownerEmail && u.emailVerified === true;
   if (S.ownerEmail && !S.isAdmin) { render(); return; }
-  if (S.isAdmin) { S.tab = 'monitor'; startAdmin(); render(); return; }
+  if (S.isAdmin) { S.tab = 'inicio'; startAdmin(); render(); return; }
   startPerson();
   render();
 }
@@ -1411,7 +1411,7 @@ function render() {
   if (v === 'verify') renderVerify();
   if (v === 'shop') tabs = renderShop();
   if (v === 'rider') tabs = renderRider();
-  if (v === 'admin') tabs = renderAdmin();
+  if (v === 'admin') { const list = renderAdmin(); S.adminMenu = list; adminHome(list); tabs = null; }
   renderTabs(tabs);
   $('#orderBtn').disabled = !canAct();
 }
@@ -2342,3 +2342,26 @@ function zoneTag(o) { const z = zoneOf(o); return z ? '<br><small>📍 ' + esc(z
     }
   });
 })();
+
+/* ---------- pantalla principal del dueño (menú con todas las secciones) ---------- */
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '#adminHome h2{margin-bottom:4px}#adminHome .ah-g{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}#adminHome .ah-c{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;background:#fff;border:2px solid var(--line,#d5dbe3);border-radius:20px;padding:16px 14px;min-height:118px;box-shadow:0 3px 10px rgba(20,30,45,.08);font:inherit;color:inherit}#adminHome .ah-c:active{transform:scale(.98)}#adminHome .ah-i{font-size:30px;line-height:1}#adminHome .ah-c b{font-size:19px}#adminHome .ah-c small{opacity:.7;font-size:14px;line-height:1.25}#adminHome .ah-b{position:absolute;top:10px;right:10px;background:#16202a;color:#ffc61a;border-radius:99px;min-width:26px;height:26px;padding:0 8px;display:grid;place-items:center;font-weight:800;font-size:14px}' +
+    '#adminBack{display:none;margin:0 0 6px}#adminBack button{background:#fff;border:2px solid var(--line,#cfd6de);border-radius:14px;font:inherit;font-weight:800;padding:10px 16px;min-height:46px;color:inherit}.ah-in #adminBack{display:block}';
+  document.head.appendChild(st);
+})();
+const AH = { monitor: ['📡', 'En vivo', 'Pedidos y repartidores ahora'], altas: ['🧾', 'Altas', 'Aprobar o dar de baja'], recargas: ['💵', 'Recargas', 'Pagos de repartidores'], incidencias: ['⚠️', 'Incidencias', 'Reportes y accidentes'], saldos: ['👛', 'Saldos', 'Lo que tiene cada repartidor'], zonas: ['📍', 'Zonas', 'Áreas de trabajo por colonia'], ajustes: ['🏦', 'Depósito', 'Datos para recargar'] };
+function adminHome(list) {
+  const host = $('#adminMonitor'); if (!host) return;
+  let el = document.getElementById('adminHome');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'adminHome'; el.className = 'stack'; host.before(el);
+    const bk = document.createElement('div'); bk.id = 'adminBack'; bk.innerHTML = '<button type="button" data-act="tab" data-tab="inicio">← Inicio</button>'; el.before(bk);
+  }
+  const home = S.tab === 'inicio';
+  el.hidden = !home; $('#viewAdmin').classList.toggle('ah-in', !home);
+  if (!home) return;
+  const h = '<h2 class="section">Panel de administración</h2><p class="hint">Toca una sección para entrar.</p><div class="ah-g">' +
+    (list || []).map((t) => { const a = AH[t.id] || ['•', t.label, '']; return '<button type="button" class="ah-c" data-act="tab" data-tab="' + t.id + '"><span class="ah-i">' + a[0] + '</span><b>' + esc(a[1]) + '</b><small>' + esc(a[2]) + '</small>' + (t.badge ? '<span class="ah-b">' + t.badge + '</span>' : '') + '</button>'; }).join('') + '</div>';
+  if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
+}
