@@ -2202,7 +2202,7 @@ function delivNotice(o) {
   const va = document.getElementById('viewAuth'); if (!va) return;
   const WC = { on: true };
   const off = () => lsGet('gasca_nowelcome') === '1';
-  const cards = [['shop', '🏪', 'Para negocios', 'Soy tienda o restaurante', '#f6b400'], ['rider', '🛵', 'Repartidor', 'Recibo pedidos y acepto', '#1f9d55'], ['cliente', '📦', 'Para envíos personales', 'Quiero enviar algo', '#2b7de9']];
+  const cards = [['shop', '🏪', 'Para negocios', 'Soy tienda o restaurante', '#f6b400'], ['rider', '🛵', 'Repartidor', 'Cuido tu pedido y entrego en tiempo y forma', '#1f9d55'], ['cliente', '📦', 'Para envíos personales', 'Quiero enviar algo', '#2b7de9']];
   const st = document.createElement('style');
   st.textContent = '#wcBox{display:none}.wc-on #wcBox{display:block}.wc-on #authTitle,.wc-on #authLede,.wc-on #authForm,.wc-on #authLinks,.wc-on #installHint{display:none!important}' +
     '.wc-hero{background:linear-gradient(135deg,#f6b400,#ffd24d);border-radius:24px;padding:18px 18px 22px;text-align:center;color:#16202a;overflow:hidden;box-shadow:0 8px 22px rgba(246,180,0,.35);animation:wcin .5s ease both}.wc-hero h2{margin:6px 0 2px;font-size:30px;line-height:1.1}.wc-hero p{margin:0;font-weight:600;opacity:.8}' +
@@ -2412,7 +2412,7 @@ function renderSwitch(el) {
   if (document.activeElement && /^(sw-name|sw-addr|sw-tel)$/.test(document.activeElement.id || '')) return;
   const r = S.swrRole, card = (v, ic, t, sm) => '<button type="button" class="wc-card' + (r === v ? ' sel' : '') + '" data-act="swr-pick" data-r="' + v + '" style="' + (r === v ? 'border-color:#f6b400;box-shadow:0 0 0 3px rgba(246,180,0,.35)' : '') + '"><span class="wc-ic" style="background:#fff3cf" aria-hidden="true">' + ic + '</span><span><b>' + t + '</b><small>' + sm + '</small></span></button>';
   el.innerHTML = '<h1>Cambiar de perfil</h1><p class="lede">Sigues teniendo una sola cuenta, con tu mismo correo. Elige con qué perfil quieres entrar ahora.</p>' +
-    card('shop', '🏪', 'Para negocios', 'Soy tienda o restaurante') + card('rider', '🛵', 'Repartidor', 'Recibo pedidos y acepto') + card('cliente', '📦', 'Para envíos personales', 'Quiero enviar algo') +
+    card('shop', '🏪', 'Para negocios', 'Soy tienda o restaurante') + card('rider', '🛵', 'Repartidor', 'Cuido tu pedido y entrego en tiempo y forma') + card('cliente', '📦', 'Para envíos personales', 'Quiero enviar algo') +
     (r ? '<div class="field"><label for="sw-name">' + (r === 'shop' ? 'Nombre del negocio' : 'Tu nombre completo') + '</label><input id="sw-name" type="text" maxlength="60" value="' + esc(S.swrName) + '"></div>' : '') +
     (r === 'shop' ? '<div class="field"><label for="sw-addr">Dirección de recogida</label><input id="sw-addr" type="text" maxlength="160" placeholder="Calle, número y colonia" value="' + esc(S.swrAddr) + '"></div>' : '') +
     (r === 'cliente' ? '<div class="field"><label for="sw-tel">Tu teléfono (10 dígitos)</label><input id="sw-tel" type="tel" inputmode="numeric" maxlength="14" value="' + esc(S.swrTel) + '"></div>' : '') +
@@ -2632,6 +2632,7 @@ function tarFor(km) {
     el.hidden = !mode;
     const inp = el.querySelector('#gm-pass'); if (inp && !busy) setTimeout(() => inp.focus(), 50);
   }
+  const gpw = () => (S.pwFor === S.email ? S.pw || '' : '');
   function active() { return S.role === 'rider' && S.myOrders && S.myOrders.some((o) => o.driverId === S.uid && (o.estado === 'asignado' || o.estado === 'recogido')); }
   async function verifyPass(pass) {
     let a2; try { a2 = getAuth(initializeApp(FIREBASE_CONFIG, 'probe')); } catch (e) { return true; }
@@ -2642,7 +2643,7 @@ function tarFor(km) {
     if (active()) { err = 'Tienes un pedido activo. Termínalo antes de cambiar de modo.'; paint(); return; }
     busy = true; err = ''; paint();
     try {
-      if (!S.pw || S.pw !== pass) { if (!(await verifyPass(pass))) { err = 'Contraseña incorrecta.'; busy = false; paint(); return; } }
+      if (!gpw() || gpw() !== pass) { if (!(await verifyPass(pass))) { err = 'Contraseña incorrecta.'; busy = false; paint(); return; } }
       const carry = S.name; lsSet('gasca_online_' + S.uid, '0');
       try { await signInWithEmailAndPassword(auth, i.target, pass); window.__carry = ''; }
       catch (e) {
@@ -2650,7 +2651,7 @@ function tarFor(km) {
         try { await createUserWithEmailAndPassword(auth, i.target, pass); window.__carry = carry || ''; }
         catch (e2) { err = e2 && e2.code === 'auth/email-already-in-use' ? 'Ese perfil ya existe con otra contraseña. Entra con esa contraseña.' : authMsg(e2); busy = false; paint(); return; }
       }
-      S.pw = pass; busy = false; close();
+      S.pw = pass; S.pwFor = i.target; busy = false; close();
     } catch (e) { err = 'No se pudo cambiar. Intenta de nuevo.'; busy = false; paint(); }
   }
   document.addEventListener('click', (e) => {
@@ -2661,7 +2662,7 @@ function tarFor(km) {
     const a = b.getAttribute('data-gm');
     if (a === 'close' || a === 'stay') close();
     else if (a === 'out') { close(); doSignOut(); }
-    else if (a === 'switch' || a === 'goto') { if (active()) { err = ''; close(); toast('Tienes un pedido activo. Termínalo antes de cambiar de modo.'); } else if (S.pw) go(S.pw); else { mode = 'pass'; err = ''; paint(); } }
+    else if (a === 'switch' || a === 'goto') { if (active()) { err = ''; close(); toast('Tienes un pedido activo. Termínalo antes de cambiar de modo.'); } else if (gpw()) go(gpw()); else { mode = 'pass'; err = ''; paint(); } }
     else if (a === 'go') { const v = (el.querySelector('#gm-pass') || {}).value || ''; if (v.length < 6) { err = 'Escribe tu contraseña.'; paint(); return; } go(v); }
   }, true);
   el.addEventListener('keydown', (e) => { if (e.key === 'Enter' && mode === 'pass') { const v = (el.querySelector('#gm-pass') || {}).value || ''; if (v.length >= 6) go(v); } });
@@ -2684,7 +2685,7 @@ function tarFor(km) {
     if (pend && S.user && S.ready) {
       const v = view(); if (v === 'loading' || v === 'auth') return;
       const p = pend; pend = null;
-      if (S.email === p.email) { S.pw = p.pass; if (!suffixRole(S.email)) probe(p); }
+      if (S.email === p.email) { S.pw = p.pass; S.pwFor = p.email; if (!suffixRole(S.email)) probe(p); }
     }
     /* alta del segundo perfil: sin elegir quién eres */
     if (S.user && view() === 'profile') {
