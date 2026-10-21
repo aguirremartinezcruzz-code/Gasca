@@ -688,6 +688,10 @@ async function picked(id) {
 }
 
 /* Entregar y descontar la comisión van juntas: o pasan las dos o no pasa ninguna. */
+function deliveredLocal(id, o) {
+  // actualiza la pantalla al instante, sin esperar al servidor
+  [S.orders, S.myOrders, S.openOrders].forEach((l) => { (l || []).forEach((x) => { if (x && x.id === id) { x.estado = 'entregado'; x.entregadoEn = Date.now(); } }); });
+}
 async function delivered(id, codigoIn) {
   const o = byId(id);
   if (!canAct() || !o || o.driverId !== S.uid || o.estado !== 'recogido' || S.busy.has(id)) return;
@@ -704,8 +708,16 @@ async function delivered(id, codigoIn) {
       tx.update(wref, { saldoC: (Number(ws.data().saldoC) || 0) - com, lastOrder: id });
       tx.set(doc(db, 'movs', 'cm_' + id), { driverId: S.uid, tipo: 'comision', montoC: -com, orderId: id, creadoEn: now });
     });
+    deliveredLocal(id, o);
     toast('Entrega registrada. Se descontó ' + cents(comC(o)) + ' de comisión.');
   } catch (e) {
+    // si la entrega sí quedó guardada (mala señal, doble toque…), se da por buena
+    try {
+      const chk = await getDoc(doc(db, 'orders', id));
+      if (chk.exists() && chk.data().estado === 'entregado' && chk.data().driverId === S.uid) {
+        deliveredLocal(id, o); toast('Entrega registrada.'); S.busy.delete(id); render(); return true;
+      }
+    } catch (e2) {}
     if (e && (e.code === 'permission-denied' || /permission/i.test(e.message || ''))) { codeFail(); }
     else if (e && e.message === 'nowallet') { await ensureWallet(); toast('Se estaba abriendo tu saldo. Vuelve a tocar "Ya entregué".'); }
     else toast('No se pudo registrar la entrega. Intenta de nuevo.');
