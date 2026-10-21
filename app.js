@@ -1373,6 +1373,7 @@ function renderAdmin() {
     { id: 'recargas', label: 'Recargas', badge: pend.length },
     { id: 'incidencias', label: 'Incidencias', badge: S.incs.filter((x) => x.estado === 'abierta').length },
     { id: 'saldos', label: 'Saldos' },
+    { id: 'zonas', label: 'Zonas' },
     { id: 'ajustes', label: 'Depósito' }
   ];
 }
@@ -2304,19 +2305,19 @@ function zoneTag(o) { const z = zoneOf(o); return z ? '<br><small>📍 ' + esc(z
 /* editor de zonas del dueño (en Ajustes) */
 (function () {
   const host = document.getElementById('adminAjustes'); if (!host) return;
-  const ed = document.createElement('div'); ed.id = 'zonasEd';
-  host.appendChild(ed);
+  const ed = document.createElement('div'); ed.id = 'zonasEd'; ed.className = 'stack'; ed.hidden = true;
+  host.after(ed);
   let draft = null, dirty = false, lastSrc = '';
   const src = () => JSON.stringify(S.zonas || []);
   function html() {
     const unk = []; (S.orders || []).forEach((o) => { if (o.pickup && !zoneOf(o) && unk.indexOf(o.pickup) < 0) unk.push(o.pickup); });
-    return '<h2 class="section" style="margin-top:28px">Zonas de trabajo</h2><p class="hint">Cada zona tiene un nombre y las colonias que cubre (sepáralas con comas). El repartidor elige en qué zona trabaja y solo le salen pedidos de esas zonas. Si una colonia no está en ninguna zona, el pedido le sale a todos.</p>' +
+    return '<h2 class="section">Zonas de trabajo</h2><p class="hint">Cada zona tiene un nombre y las colonias que cubre (sepáralas con comas). El repartidor elige en qué zona trabaja y solo le salen pedidos de esas zonas. Si una colonia no está en ninguna zona, el pedido le sale a todos.</p>' +
       draft.map((z, i) => '<div class="zn"><div class="field"><label>Nombre de la zona</label><input type="text" maxlength="40" data-zi="' + i + '" data-zf="n" value="' + esc(z.nombre) + '" placeholder="Ej. Vistas de la Cantera"></div><div class="field"><label>Colonias que cubre</label><textarea data-zi="' + i + '" data-zf="c" maxlength="800" placeholder="Ej. Vistas de la Cantera, La Cantera, Fraccionamiento Los Sauces">' + esc((z.colonias || []).join(', ')) + '</textarea></div><button class="btn ghost small" type="button" data-zact="del" data-zi="' + i + '">Quitar zona</button></div>').join('') +
       '<button class="btn ghost block" type="button" data-zact="add">＋ Agregar zona</button><button class="btn primary block" type="button" data-zact="save" style="margin-top:10px">Guardar zonas</button>' +
       (unk.length ? '<p class="zs"><b>Recogidas recientes sin zona:</b><br>' + unk.slice(0, 8).map(esc).join('<br>') + '</p>' : '');
   }
   function sync() {
-    if (view() !== 'admin' || S.tab !== 'ajustes') { ed.hidden = true; return; }
+    if (view() !== 'admin' || S.tab !== 'zonas') { ed.hidden = true; return; }
     ed.hidden = false;
     if (!draft || (!dirty && lastSrc !== src())) { draft = JSON.parse(src()); lastSrc = src(); dirty = false; if (!draft.length) draft = []; }
     if (ed.contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
