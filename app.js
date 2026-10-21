@@ -2545,8 +2545,11 @@ function delivNotice(o) {
     sync(); try { window.scrollTo(0, 0); } catch (er) {}
   });
   const mark = document.querySelector('.top .mark');
+  let mkN = 0, mkT = 0;
   if (mark) mark.addEventListener('click', () => {
     if (view() !== 'auth' || S.user) return;
+    const now = Date.now(); mkN = (now - mkT < 1500) ? mkN + 1 : 1; mkT = now;
+    if (mkN < 3) return; mkN = 0;
     WC.on = false; setMode('owner'); sync(); try { window.scrollTo(0, 0); } catch (er) {}
   });
   back.addEventListener('click', () => { WC.on = true; setMode('login'); sync(); try { window.scrollTo(0, 0); } catch (er) {} });
