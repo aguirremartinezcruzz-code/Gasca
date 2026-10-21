@@ -2633,14 +2633,24 @@ function tarFor(km) {
         '<button class="pri" data-gm="go"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Un momento…' : 'Continuar') + '</button><button class="gh" data-gm="close">Cancelar</button></div>';
     } else if (mode === 'choose' && i) {
       const all = [{ kind: i.cur, stay: true }].concat(chooseOpts);
-      el.innerHTML = '<div class="gm"><h3>¿A dónde vas?</h3><p>Tienes más de un perfil con tu correo. Elige con cuál quieres trabajar ahora.</p><div class="gr">' +
-        all.map((o, n) => '<button class="' + (o.stay ? 'pri' : '') + '" data-gm="' + (o.stay ? 'stay' : 'goto') + '" data-k="' + (n - 1) + '"><span style="font-size:34px">' + ICO[o.kind] + '</span>' + ({ rider: 'Repartidor', shop: 'Restaurante', cliente: 'Envíos personales' }[o.kind]) + '</button>').join('') + '</div>' + (err ? '<div class="er">' + esc(err) + '</div>' : '') + '</div>';
+      el.innerHTML = '<div class="gm"><h3>¿Qué quieres hacer hoy?</h3><p>Tienes más de un perfil aprobado. Elige qué vas a hacer ahora.</p><div class="gr">' +
+        all.map((o, n) => '<button class="' + (o.stay ? 'pri' : '') + '" data-gm="' + (o.stay ? 'stay' : 'goto') + '" data-k="' + (n - 1) + '"><span style="font-size:34px">' + ICO[o.kind] + '</span>' + ({ rider: 'Repartir', shop: 'Pedir motos para mi negocio', cliente: 'Solicitar un envío' }[o.kind]) + '</button>').join('') + '</div>' + (err ? '<div class="er">' + esc(err) + '</div>' : '') + '</div>';
     } else { mode = ''; }
     el.hidden = !mode;
     const inp = el.querySelector('#gm-pass'); if (inp && !busy) setTimeout(() => inp.focus(), 50);
   }
   const active = () => S.role === 'rider' && S.myOrders && S.myOrders.some((o) => o.driverId === S.uid && (o.estado === 'asignado' || o.estado === 'recogido'));
-  const sub = () => { try { return getAuth(initializeApp(FIREBASE_CONFIG, 'probe')); } catch (e) { return null; } };
+  let pApp = null, pDb = null;
+  const sub = () => { try { pApp = pApp || initializeApp(FIREBASE_CONFIG, 'probe'); return getAuth(pApp); } catch (e) { return null; } };
+  async function approvedAlias(email, pass) {
+    const a2 = sub(); if (!a2) return false;
+    try {
+      const cr = await signInWithEmailAndPassword(a2, email, pass); let ok = false;
+      try { pDb = pDb || initializeFirestore(pApp, { experimentalAutoDetectLongPolling: true }); const d = await getDoc(doc(pDb, 'aprobaciones', cr.user.uid)); ok = d.exists() && d.data().estado === 'aprobado'; } catch (e) {}
+      try { await signOut(a2); } catch (e) {}
+      return ok;
+    } catch (e) { return false; }
+  }
   async function exists(email, pass) {
     const a2 = sub(); if (!a2) return false;
     try { await signInWithEmailAndPassword(a2, email, pass); try { await signOut(a2); } catch (e) {} return true; } catch (e) { return false; }
@@ -2691,7 +2701,8 @@ function tarFor(km) {
   }, true);
   async function probe(p) {
     const i = info(); if (!i || i.back) return;
-    const res = await Promise.all(i.opts.map((o) => exists(o.target, p.pass)));
+    const v0 = view(); if (v0 !== 'shop' && v0 !== 'rider') return;
+    const res = await Promise.all(i.opts.map((o) => approvedAlias(o.target, p.pass)));
     const found = i.opts.filter((o, n) => res[n]);
     if (found.length && S.user && S.email === p.email && !mode) { chooseOpts = found; mode = 'choose'; err = ''; paint(); }
   }
