@@ -1344,6 +1344,7 @@ function renderAdmin() {
   $('#adminSearch').hidden = S.tab !== 'recargas'; $('#adminAjustes').hidden = S.tab !== 'ajustes';
   $('#adminMonitor').hidden = S.tab !== 'monitor';
   $('#adminAltas').hidden = S.tab !== 'altas';
+  const pd = pedDiv(); pd.hidden = S.tab !== 'pedidos'; if (S.tab === 'pedidos') renderPedidos(pd);
   const ic = incDiv(); ic.hidden = S.tab !== 'incidencias';
   if (S.tab === 'incidencias') renderIncid(ic);
   if (S.tab === 'monitor') renderMonitor();
@@ -1379,6 +1380,7 @@ function renderAdmin() {
     { id: 'monitor', label: 'En vivo', badge: S.orders.filter((o) => o.estado === 'abierto').length },
     { id: 'altas', label: 'Altas', badge: S.users.filter((u) => personStatus(u, S.aprobs[u.id]) === 'revision').length },
     { id: 'recargas', label: 'Recargas', badge: pend.length },
+    { id: 'pedidos', label: 'Pedidos', badge: S.orders.filter((o) => o.estado === 'asignado' || o.estado === 'recogido').length },
     { id: 'incidencias', label: 'Incidencias', badge: S.incs.filter((x) => x.estado === 'abierta').length },
     { id: 'saldos', label: 'Saldos' },
     { id: 'zonas', label: 'Radio' },
@@ -1516,6 +1518,7 @@ document.addEventListener('click', (e) => {
   else if (act === 'swr-close') { S.swr = false; render(); }
   else if (act === 'swr-pick') { S.swrRole = b.getAttribute('data-r'); render(); }
   else if (act === 'swr-go') switchRole();
+  else if (act === 'ped-f') { S.pedF = b.getAttribute('data-f'); render(); }
   else if (act === 'tab') { S.tab = b.getAttribute('data-tab'); S.cancelId = null; render(); }
   else if (act === 'cancel') { S.cancelId = id; render(); }
   else if (act === 'cancel-no') { S.cancelId = null; render(); }
@@ -1858,6 +1861,61 @@ function incDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'adminIncid'; el.className = 'stack'; el.hidden = true; const ref = document.getElementById('adminSaldos'); ref.parentNode.insertBefore(el, ref.nextSibling); }
   return el;
 }
+function ordStatus(o) {
+  if (!o) return { t: 'Pedido no encontrado', cls: '' };
+  if (o.estado === 'cancelado') return { t: 'No entregado · Cancelado', cls: '' };
+  if (o.estado === 'entregado' && o.liberado) return { t: 'No entregado · Liberado por administración', cls: 'abierto' };
+  if (o.estado === 'entregado') return { t: 'Entregado con éxito', cls: 'entregado' };
+  if (o.estado === 'recogido') return { t: 'En camino (el repartidor ya lo recogió)', cls: 'asignado' };
+  if (o.estado === 'asignado') return { t: 'Asignado (va por el pedido)', cls: 'asignado' };
+  return { t: 'Esperando repartidor', cls: 'abierto' };
+}
+function destParts(d) { const m = String(d || '').split(' — Ref: '); return { dir: m[0], ref: m[1] || '' }; }
+function orderBlock(o, x) {
+  const st = ordStatus(o), dp = destParts(o && o.dest);
+  return '<div class="subhead" style="margin:12px 0 4px">Datos del pedido</div>' +
+    '<div class="line"><span class="k">Número de pedido</span><span class="v"><b>' + (o ? folio(o.id) : esc((x && x.folio) || '')) + '</b></span></div>' +
+    '<div class="line"><span class="k">Negocio</span><span class="v">' + esc((o && o.shop) || (x && x.shop) || '') + '</span></div>' +
+    (o ? '<div class="line"><span class="k">Dirección de entrega</span><span class="v">' + esc(dp.dir) + '</span></div>' : '') +
+    (o && dp.ref ? '<div class="line"><span class="k">Referencia</span><span class="v">' + esc(dp.ref) + '</span></div>' : '') +
+    (o && o.driverName ? '<div class="line"><span class="k">Repartidor</span><span class="v">' + esc(o.driverName) + '</span></div>' : '') +
+    '<div class="line"><span class="k">Estado del pedido</span><span class="v"><b>' + esc(st.t) + '</b></span></div>';
+}
+function pedDiv() {
+  let el = document.getElementById('adminPedidos');
+  if (!el) { el = document.createElement('div'); el.id = 'adminPedidos'; el.className = 'stack'; el.hidden = true; const ref = document.getElementById('adminSaldos'); ref.parentNode.insertBefore(el, ref.nextSibling); }
+  return el;
+}
+function pedGroups() {
+  const openInc = new Set(S.incs.filter((x) => x.estado === 'abierta').map((x) => x.orderId));
+  const g = { atender: [], exito: [], no: [] };
+  S.orders.forEach((o) => {
+    if (o.estado === 'cancelado' || (o.estado === 'entregado' && o.liberado)) g.no.push(o);
+    else if (o.estado === 'entregado') g.exito.push(o);
+    else g.atender.push(o);
+  });
+  const tm = (o) => o.entregadoEn || o.canceladoEn || o.creadoEn || 0;
+  g.atender.sort((a, b) => (openInc.has(b.id) - openInc.has(a.id)) || b.creadoEn - a.creadoEn);
+  g.exito.sort((a, b) => tm(b) - tm(a)); g.no.sort((a, b) => tm(b) - tm(a));
+  return g;
+}
+function renderPedidos(el) {
+  const g = pedGroups(), f = S.pedF || 'atender';
+  const T = [['atender', '⏳ Por atender'], ['exito', '✅ Con éxito'], ['no', '🚫 No entregados']];
+  const openInc = new Set(S.incs.filter((x) => x.estado === 'abierta').map((x) => x.orderId));
+  let h = '<h2 class="section">Pedidos</h2><div class="actions" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
+    T.map((t) => '<button type="button" class="btn ' + (f === t[0] ? 'primary' : 'ghost') + ' small" data-act="ped-f" data-f="' + t[0] + '">' + t[1] + ' (' + g[t[0]].length + ')</button>').join('') + '</div>';
+  const L = g[f].slice(0, 60);
+  h += L.length ? L.map((o) => {
+    const st = ordStatus(o), when = o.entregadoEn || o.canceladoEn || o.creadoEn;
+    return '<article class="order"><div class="head"><span class="folio">' + folio(o.id) + '</span><span class="chip ' + st.cls + '">' + esc(st.t.split(' · ')[0]) + '</span><span class="ago">' + ago(when) + '</span></div>' +
+      (openInc.has(o.id) ? '<div class="paynote">⚠️ Tiene una incidencia sin atender (entra a Incidencias).</div>' : '') +
+      orderBlock(o, null).replace('<div class="subhead" style="margin:12px 0 4px">Datos del pedido</div>', '').replace(/<div class="line"><span class="k">Número de pedido<\/span>.*?<\/div>/, '') +
+      (o.tarifa ? '<div class="line"><span class="k">Tarifa de envío</span><span class="v">' + pesos(o.tarifa) + '</span></div>' : '') + '</article>';
+  }).join('') + (g[f].length > 60 ? '<p class="hint">Se muestran los 60 más recientes.</p>' : '')
+    : emptyBox('Nada aquí', f === 'atender' ? 'No hay pedidos pendientes.' : f === 'exito' ? 'Todavía no hay pedidos entregados con éxito.' : 'No hay pedidos cancelados ni liberados.');
+  if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
+}
 function renderIncid(el) {
   const list = S.incs.slice().sort((a, b) => (a.estado === b.estado ? b.creadoEn - a.creadoEn : (a.estado === 'abierta' ? -1 : 1)));
   let h = '<h2 class="section">Incidencias</h2>';
@@ -1870,9 +1928,9 @@ function renderIncid(el) {
       '<div class="line"><span class="k">Problema</span><span class="v"><b>' + (NOANS_RE.test(x.nota || '') ? '📵 Nadie contesta en la entrega' : esc(INC_TIPOS[x.tipo] || x.tipo)) + '</b></span></div>' +
       (x.nota ? '<div class="line"><span class="k">Nota</span><span class="v">' + esc(x.nota) + noansMap(x.nota) + '</span></div>' : '') +
       (() => { const mt = /Tel (\d{10})/.exec(x.nota || ''); return mt ? '<div class="links"><a href="' + esc(waUrl(mt[1])) + '" target="_blank" rel="noopener">💬 WhatsApp al repartidor</a><a href="tel:' + mt[1] + '">📞 Llamar ' + mt[1] + '</a></div>' : '<div class="line"><span class="k">Contacto</span><span class="v"><small>Este aviso no trae teléfono. Los nuevos avisos sí lo traen.</small></span></div>'; })() +
-      '<div class="line"><span class="k">Pedido</span><span class="v">' + esc(x.folio || '') + ' · ' + esc(x.shop || '') + (o ? ' · ' + esc(LABEL[o.estado] || o.estado) + ' · ' + esc(o.dest) : '') + '</span></div>' +
+      orderBlock(o, x) +
       (S.libs && S.libs[x.orderId] && o && o.estado === 'recogido' ? '<div class="paynote">Código de liberación: <b style="font-size:26px;letter-spacing:4px">' + esc(S.libs[x.orderId]) + '</b><br><small>Díctaselo al repartidor después de hablar con el cliente y el restaurante.</small></div>' : '') +
-      (o && o.liberado ? '<div class="line"><span class="k">Resultado</span><span class="v"><b>🔑 Liberado por administración</b></span></div>' : '') +
+      (o && o.liberado ? '<div class="line"><span class="k">Resultado</span><span class="v"><b>🔑 Pedido no entregado · Liberado por administración</b></span></div>' : '') +
       (open ? '<div class="actions">' +
         (o && o.estado === 'recogido' && o.driverId ? '<button class="btn primary small" type="button" data-act="inc-code" data-id="' + esc(x.id) + '" data-oid="' + esc(x.orderId) + '"' + (busy ? ' disabled' : '') + '>🔑 Código de liberación</button>' +
           '<button class="btn ghost small" type="button" data-act="inc-release" data-id="' + esc(x.id) + '" data-oid="' + esc(x.orderId) + '"' + (busy ? ' disabled' : '') + '>Liberar yo (sin código)</button>' : '') +
@@ -2505,7 +2563,7 @@ function zoneTag(o) { const z = zoneOf(o); return z ? '<br><small>📍 ' + esc(z
     '#adminBack{display:none;margin:0 0 6px}#adminBack button{background:#fff;border:2px solid var(--line,#cfd6de);border-radius:14px;font:inherit;font-weight:800;padding:10px 16px;min-height:46px;color:inherit}.ah-in #adminBack{display:block}';
   document.head.appendChild(st);
 })();
-const AH = { monitor: ['📡', 'En vivo', 'Pedidos y repartidores ahora'], altas: ['🧾', 'Altas', 'Aprobar o dar de baja'], recargas: ['💵', 'Recargas', 'Pagos de repartidores'], incidencias: ['⚠️', 'Incidencias', 'Reportes y accidentes'], saldos: ['👛', 'Saldos', 'Lo que tiene cada repartidor'], zonas: ['📍', 'Radio', 'Distancia de pedidos cercanos'], ajustes: ['🏦', 'Depósito', 'Datos para recargar'] };
+const AH = { monitor: ['📡', 'En vivo', 'Pedidos y repartidores ahora'], altas: ['🧾', 'Altas', 'Aprobar o dar de baja'], recargas: ['💵', 'Recargas', 'Pagos de repartidores'], pedidos: ['📦', 'Pedidos', 'Por atender, con éxito y no entregados'], incidencias: ['⚠️', 'Incidencias', 'Reportes y accidentes'], saldos: ['👛', 'Saldos', 'Lo que tiene cada repartidor'], zonas: ['📍', 'Radio', 'Distancia de pedidos cercanos'], ajustes: ['🏦', 'Depósito', 'Datos para recargar'] };
 function adminHome(list) {
   const host = $('#adminMonitor'); if (!host) return;
   let el = document.getElementById('adminHome');
