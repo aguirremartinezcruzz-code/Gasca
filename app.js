@@ -2187,7 +2187,7 @@ function delivNotice(o) {
     af.classList.toggle('rl-pick', on && !v);
     fs.classList.toggle('rl-chosen', on && !!v);
     fs.querySelectorAll('label.role').forEach((l) => l.classList.toggle('rl-gone', on && !!v && l.querySelector('input').value !== v));
-    if (on) { const lede = $('#authLede'); lede.textContent = v ? LEDE[v] : 'Elige cómo quieres usar Gasca. Solo toma un minuto.'; }
+    if (on && !window.__aliasProf) { const lede = $('#authLede'); lede.textContent = v ? LEDE[v] : 'Elige cómo quieres usar Gasca. Solo toma un minuto.'; }
   }
   document.getElementById('rlChange').addEventListener('click', () => {
     [...af.querySelectorAll('input[name=role]')].forEach((r) => { r.checked = false; });
@@ -2703,15 +2703,18 @@ function tarFor(km) {
       const p = pend; pend = null;
       if (S.email === p.email) { S.pw = p.pass; S.pwFor = p.email; if (!suffixKind(S.email)) probe(p); }
     }
+    window.__aliasProf = false;
     if (S.user && view() === 'profile') {
       const sk = suffixKind(S.email);
       if (sk) {
+        window.__aliasProf = true;
         const rd = af.querySelector('input[name=role][value=' + sk + ']');
         if (rd && !rd.checked) { rd.checked = true; rd.dispatchEvent(new Event('change', { bubbles: true })); }
         const nm = $('#a-name'); if (nm && !nm.value && window.__carry) nm.value = window.__carry;
-        $('#authRoles').hidden = true;
-        $('#authTitle').textContent = 'Alta de tu perfil de ' + LBL[sk];
-        $('#authLede').textContent = 'Usas el mismo correo y la misma contraseña. Llena los datos; la administración los revisará antes de aprobarlo.';
+        const tt = 'Alta de tu perfil de ' + LBL[sk], ld = 'Usas el mismo correo y la misma contraseña. Llena los datos; la administración los revisará antes de aprobarlo.';
+        if (!$('#authRoles').hidden) $('#authRoles').hidden = true;
+        if ($('#authTitle').textContent !== tt) $('#authTitle').textContent = tt;
+        if ($('#authLede').textContent !== ld) $('#authLede').textContent = ld;
       }
     }
   }, 400);
