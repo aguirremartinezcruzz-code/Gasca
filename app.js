@@ -425,6 +425,7 @@ function startRole() {
     listen(roleUnsubs, query(collection(db, 'recargas'), where('driverId', '==', S.uid)), (snap) => { S.recargas = snap.docs.map((d) => d.data()).filter((r) => r && r.id && r.estado); render(); });
     listen(roleUnsubs, doc(db, 'config', 'pago'), (s) => { S.pago = (s.exists() && s.data().texto) || ''; render(); });
     listen(roleUnsubs, doc(db, 'config', 'zonas'), (s) => { S.zonas = (s.exists() && Array.isArray(s.data().zonas)) ? s.data().zonas : []; S.radioKm = (s.exists() && Number(s.data().radioKm)) || 3; mergeOrders(); syncSheet(); render(); });
+    listen(roleUnsubs, doc(db, 'config', 'tarifas'), (s) => { S.tarifas = s.exists() ? s.data() : null; });
     listen(roleUnsubs, query(collection(db, 'ofertas'), where('driverId', '==', S.uid)), onOfertas);
   } else {
     listen(roleUnsubs, query(collection(db, 'ofertas'), where('shopId', '==', S.uid)), onOfertas);
@@ -631,6 +632,7 @@ function startAdmin() {
   listen(unsubs, query(collection(db, 'presence'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = d.data(); }); S.presence = m; render(); });
   listen(unsubs, doc(db, 'config', 'pago'), (s) => { S.pago = (s.exists() && s.data().texto) || ''; render(); });
   listen(unsubs, doc(db, 'config', 'zonas'), (s) => { S.zonas = (s.exists() && Array.isArray(s.data().zonas)) ? s.data().zonas : []; S.radioKm = (s.exists() && Number(s.data().radioKm)) || 3; render(); });
+  listen(unsubs, doc(db, 'config', 'tarifas'), (s) => { S.tarifas = s.exists() ? s.data() : null; });
   listen(unsubs, query(collection(db, 'incidencias'), orderBy('creadoEn', 'desc'), limit(200)), (snap) => {
     const arr = snap.docs.map((d) => d.data()).filter((x) => x && x.id && x.tipo);
     if (S.incReady) arr.forEach((x) => { if (x.estado === 'abierta' && !S.incMine.has(x.id)) { beep([880, 660, 880]); buzz(); toast('Incidencia de ' + (x.driverName || 'un repartidor') + ': ' + (INC_TIPOS[x.tipo] || x.tipo)); } });
@@ -2339,16 +2341,19 @@ function zoneTag(o) { const z = zoneOf(o); return z ? '<br><small>📍 ' + esc(z
   const host = document.getElementById('adminAjustes'); if (!host) return;
   const ed = document.createElement('div'); ed.id = 'zonasEd'; ed.className = 'stack'; ed.hidden = true;
   host.after(ed);
-  let draft = null, dirty = false, lastSrc = '', radio = 3;
+  let draft = null, dirty = false, lastSrc = '', radio = 3, tar = tarCfg();
   const src = () => JSON.stringify(S.zonas || []);
   function html() {
     const unk = []; (S.orders || []).forEach((o) => { if (o.pickup && !zoneOf(o) && unk.indexOf(o.pickup) < 0) unk.push(o.pickup); });
-    return '<h2 class="section">Pedidos cercanos</h2><p class="hint">Los repartidores reciben solo los pedidos que están a este radio de donde se encuentran, usando el GPS de su celular (siempre encendido mientras están en línea).</p><div class="field"><label for="zn-radio">Radio (km)</label><input type="number" id="zn-radio" min="0.5" max="20" step="0.5" inputmode="decimal" value="' + radio + '"></div><button class="btn primary block" type="button" data-zact="save" style="margin-top:10px">Guardar radio</button>';
+    return '<h2 class="section">Pedidos cercanos</h2><p class="hint">Los repartidores reciben solo los pedidos que están a este radio de donde se encuentran, usando el GPS de su celular (siempre encendido mientras están en línea).</p><div class="field"><label for="zn-radio">Radio (km)</label><input type="number" id="zn-radio" min="0.5" max="20" step="0.5" inputmode="decimal" value="' + radio + '"></div><h2 class="section" style="margin-top:18px">Tarifa por distancia (restaurantes)</h2><p class="hint">La app calcula los km entre el negocio y el cliente y sugiere esta tarifa. El negocio puede cambiarla.</p>' +
+      [0, 1, 2].map((k) => '<div class="field"><label>Tramo ' + (k + 1) + '</label><div style="display:flex;gap:8px;align-items:center">hasta <input type="number" id="tr-h' + k + '" min="0.5" step="0.5" inputmode="decimal" value="' + esc(String(tar.tramos[k].hasta)) + '" style="width:90px"> km → $ <input type="number" id="tr-p' + k + '" min="1" step="1" inputmode="numeric" value="' + esc(String(tar.tramos[k].precio)) + '" style="width:90px"></div></div>').join('') +
+      '<div class="field"><label>Después del último tramo, cada km extra</label><div style="display:flex;gap:8px;align-items:center">$ <input type="number" id="tr-x" min="0" step="1" inputmode="numeric" value="' + esc(String(tar.extra)) + '" style="width:90px"></div></div>' +
+      '<button class="btn primary block" type="button" data-zact="save" style="margin-top:10px">Guardar</button>';
   }
   function sync() {
     if (view() !== 'admin' || S.tab !== 'zonas') { ed.hidden = true; return; }
     ed.hidden = false;
-    if (!draft || (!dirty && lastSrc !== src())) { draft = JSON.parse(src()); lastSrc = src(); dirty = false; radio = S.radioKm || 3; if (!draft.length) draft = []; }
+    if (!draft || (!dirty && lastSrc !== src())) { draft = JSON.parse(src()); lastSrc = src(); dirty = false; radio = S.radioKm || 3; tar = tarCfg(); if (!draft.length) draft = []; }
     if (ed.contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
     const h = html(); if (ed.dataset.h !== h) { ed.innerHTML = h; ed.dataset.h = h; }
   }
@@ -2356,6 +2361,7 @@ function zoneTag(o) { const z = zoneOf(o); return z ? '<br><small>📍 ' + esc(z
   ed.addEventListener('input', (e) => {
     const t = e.target;
     if (t.id === 'zn-radio') { radio = t.value; dirty = true; return; }
+    { const m = /^tr-([hp])(\d)$/.exec(t.id || ''); if (m) { tar.tramos[Number(m[2])][m[1] === 'h' ? 'hasta' : 'precio'] = t.value; dirty = true; return; } if (t.id === 'tr-x') { tar.extra = t.value; dirty = true; return; } }
     const i = Number(t.getAttribute('data-zi')); if (!draft || isNaN(i) || !draft[i]) return;
     dirty = true;
     if (t.getAttribute('data-zf') === 'n') draft[i].nombre = t.value; else draft[i].colonias = t.value.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
@@ -2368,6 +2374,10 @@ function zoneTag(o) { const z = zoneOf(o); return z ? '<br><small>📍 ' + esc(z
     else if (a === 'save') {
       const out = Array.isArray(S.zonas) ? S.zonas : [];
       const rk = Math.min(20, Math.max(0.5, Number(radio) || 3));
+      const tr = tar.tramos.map((x) => ({ hasta: Number(x.hasta), precio: Math.round(Number(x.precio)) }));
+      if (tr.some((x, k) => !(x.hasta > 0) || !(x.precio >= 1 && x.precio <= 2000) || (k && x.hasta <= tr[k - 1].hasta))) { toast('Revisa los tramos: los km deben ir subiendo y el precio ser de $1 a $2,000.'); return; }
+      const ex = Math.max(0, Math.min(500, Math.round(Number(tar.extra) || 0)));
+      try { await setDoc(doc(db, 'config', 'tarifas'), { tramos: tr, extra: ex, actualizado: Date.now() }); } catch (er) { toast('No se pudo guardar la tarifa.'); return; }
       try { await setDoc(doc(db, 'config', 'zonas'), { zonas: out, radioKm: rk, actualizado: Date.now() }); dirty = false; draft = null; lastSrc = ''; ed.dataset.h = ''; toast('Radio guardado.'); }
       catch (er) { toast('No se pudo guardar. Intenta de nuevo.'); }
     }
@@ -2490,6 +2500,52 @@ function distLine(o) {
   const txt = d === undefined ? '<small>calculando…</small>' : '<b>≈ ' + fmtKm(d) + '</b> <small>aprox. · © OpenStreetMap</small>';
   return near + '<div class="line"><span class="k">Recorrido</span><span class="v">' + txt + '</span></div>';
 }
+
+/* ---------- tarifa sugerida por distancia (solo restaurantes) ---------- */
+function TAR_DEF() { return { tramos: [{ hasta: 3, precio: 45 }, { hasta: 7, precio: 65 }, { hasta: 10, precio: 70 }], extra: 5 }; }
+function tarCfg() {
+  const c = S.tarifas, ok = c && Array.isArray(c.tramos) && c.tramos.length === 3 && c.tramos.every((x) => Number(x.hasta) > 0 && Number(x.precio) > 0);
+  const b = ok ? c : TAR_DEF();
+  return { tramos: b.tramos.map((x) => ({ hasta: Number(x.hasta), precio: Number(x.precio) })), extra: b.extra != null ? Number(b.extra) : 5 };
+}
+function tarFor(km) {
+  const c = tarCfg(), t = c.tramos.find((x) => km <= x.hasta);
+  if (t) return t.precio;
+  const l = c.tramos[c.tramos.length - 1];
+  return l.precio + Math.ceil(km - l.hasta) * c.extra;
+}
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '#quoteBox{margin:8px 0 0;padding:10px 12px;border-radius:12px;background:#fff7e0;border:2px solid #f6b400;font-size:14.5px;font-weight:600}#quoteBox small{display:block;font-weight:500;opacity:.75;margin-top:2px}#quoteBox button{margin-top:6px;border:2px solid #16202a;background:#fff;border-radius:99px;padding:6px 12px;font:inherit;font-weight:800;color:inherit;min-height:38px}';
+  document.head.appendChild(st);
+  let key = '', timer = 0, auto = null, seq = 0;
+  const box = () => {
+    let b = document.getElementById('quoteBox');
+    if (!b) { const f = document.getElementById('o-tarifa') && document.getElementById('o-tarifa').closest('.field'); if (!f) return null; b = document.createElement('div'); b.id = 'quoteBox'; b.hidden = true; f.appendChild(b); }
+    return b;
+  };
+  const on = () => view() === 'shop' && !isCli(S.profile);
+  function show(html) { const b = box(); if (!b) return; b.hidden = !html; b.innerHTML = html || ''; }
+  function setT(v) { const t = $('#o-tarifa'); t.value = v; auto = String(v); t.dispatchEvent(new Event('input', { bubbles: true })); }
+  async function calc() {
+    if (!on()) { show(''); return; }
+    const pick = ($('#o-pick').value || '').trim();
+    if (pick.length < 8 || val('o-calle').length < 3 || val('o-col').length < 3) { key = ''; show(''); return; }
+    const dest = buildDest(), k = pick + '|' + dest; if (k === key) return; key = k;
+    const my = ++seq; show('📏 Calculando distancia…');
+    const [a, b] = await Promise.all([geoPoint(pick), geoPoint(dest)]);
+    if (my !== seq) return;
+    let km = a && b ? hav(a, b) * 1.3 : null; if (km > 60) km = null;
+    if (km === null) { show('No pude calcular la distancia. Pon tú la tarifa.'); return; }
+    const sug = tarFor(km), t = $('#o-tarifa'), cur = (t.value || '').trim();
+    if (!cur || cur === auto) setT(sug);
+    show('📏 Distancia aprox.: <b>' + fmtKm(km) + '</b> · Tarifa sugerida: <b>' + pesos(sug) + '</b><small>Puedes cambiarla si lo necesitas. Distancia aproximada © OpenStreetMap.</small>' + (String(t.value) !== String(sug) ? '<button type="button" data-quote="' + sug + '">Usar ' + pesos(sug) + '</button>' : ''));
+  }
+  const again = () => { clearTimeout(timer); timer = setTimeout(calc, 900); };
+  document.addEventListener('input', (e) => { const i = e.target && e.target.id; if (['o-pick', 'o-calle', 'o-num', 'o-int', 'o-col', 'o-ciudad', 'o-mun'].indexOf(i) >= 0) again(); });
+  document.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('[data-quote]'); if (b) { setT(b.getAttribute('data-quote')); b.remove(); } });
+  setInterval(() => { if (on() && $('#o-pick') && !key) again(); }, 3000);
+})();
 
 /* ---------- pedidos cerca de mí: GPS del repartidor, en movimiento ---------- */
 (function () {
