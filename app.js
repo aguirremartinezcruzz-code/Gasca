@@ -1056,7 +1056,7 @@ function histHtml(list) {
     const t = lastAct(o), dk = new Date(t).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
     if (dk !== day) { day = dk; h += '<div class="subhead">' + esc(dk) + '</div>'; }
     h += '<article class="order">' + head(o) + orderLines(o) + moneyRow(o) +
-      (o.estado === 'entregado' ? '<div class="status">Entregado por <b>' + esc(o.driverName || 'el repartidor') + '</b> · ' + new Date(o.entregadoEn || t).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) + '</div>' : '') + '</article>';
+      (o.estado === 'entregado' ? '<div class="status">Entregado por <b>' + esc(o.driverName || 'el repartidor') + '</b> · ' + new Date(o.entregadoEn || t).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) + (o.liberado ? '<br><small>🔑 Entrega liberada por administración (el cliente no contestó)</small>' : '') + '</div>' : '') + '</article>';
   });
   return h;
 }
@@ -1116,6 +1116,8 @@ function tripCard(o) {
     orderLines(o) +
     (o.tel ? '<div class="line"><span class="k">Teléfono del cliente</span><span class="v">' + esc(o.tel) + '</span></div>' : '') +
     moneyRow(o) + payNote(o) + links + '<div class="actions">' + btn + '</div>' +
+    (o.estado === 'recogido' ? '<button class="btn ghost small block" type="button" data-act="noans" data-id="' + esc(o.id) + '">📵 Ya llegué y no sale el cliente</button>' : '') +
+    (o.estado === 'recogido' && lsGet('gasca_naSent_' + o.id) ? '<button class="btn primary small block" type="button" data-act="libcode" data-id="' + esc(o.id) + '">🔑 Tengo un código de administración</button>' : '') +
     '<button class="btn ghost small block" type="button" data-act="issue" data-id="' + esc(o.id) + '">Tengo un problema</button></article>';
 }
 function renderRider() {
@@ -1547,6 +1549,10 @@ document.addEventListener('click', (e) => {
   else if (act === 'picked') picked(id);
   else if (act === 'delivered') askCode(id);
   else if (act === 'issue') askIssue(id);
+  else if (act === 'noans') askNoAns(id);
+  else if (act === 'libcode') askLib(id);
+  else if (act === 'inc-code') incCode(id, b.getAttribute('data-oid'));
+  else if (act === 'inc-release') incRelease(id, b.getAttribute('data-oid'));
   else if (act === 'inc-ok') incDone(id);
   else if (act === 'inc-reopen') incReopen(id, b.getAttribute('data-oid'));
   else if (act === 'inc-cancel') incCancel(id, b.getAttribute('data-oid'));
@@ -1758,6 +1764,85 @@ function askIssue(id) {
   };
   draw();
 }
+const NOANS_RE = /^NO CONTESTAN/;
+function noansMap(n) { const m = /GPS (-?\d+\.\d+),(-?\d+\.\d+)/.exec(n || ''); return m ? ' · <a href="https://www.google.com/maps?q=' + m[1] + ',' + m[2] + '" target="_blank" rel="noopener">Ver dónde estaba</a>' : ''; }
+const noansMs = () => Number(lsGet('gasca_noans_ms')) || 8 * 60 * 1000;
+function askNoAns(id) {
+  const o = byId(id);
+  if (!canAct() || !o || o.driverId !== S.uid || o.estado !== 'recogido' || document.getElementById('issueModal')) return;
+  const key = 'gasca_na_' + id, wait = noansMs();
+  let t0 = Number(lsGet(key)) || 0, timer = 0, sending = false;
+  const m = document.createElement('div'); m.id = 'issueModal'; document.body.appendChild(m);
+  const close = () => { clearInterval(timer); closeIssue(); };
+  const fmt = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const draw = (done) => {
+    if (done) { m.innerHTML = '<div class="box"><h3>Listo, avisamos a administración</h3><p>Administración va a llamar al cliente y al restaurante. Quédate cerca del domicilio. Cuando te den un <b>código de liberación</b>, toca <b>"Tengo un código de administración"</b> en tu pedido. Se te paga el envío.</p><button class="btn primary" type="button" id="naClose">Cerrar</button></div>'; document.getElementById('naClose').addEventListener('click', close); return; }
+    const left = t0 ? t0 + wait - Date.now() : wait, ready = t0 && left <= 0;
+    m.innerHTML = '<div class="box"><h3>📵 Ya llegué y no sale el cliente</h3>' +
+      (!t0 ? '<p>Antes de avisar, espera en el domicilio <b>' + Math.round(wait / 60000) + ' minutos</b> e intenta llamar o escribir por WhatsApp al cliente. Mantén tu GPS encendido.</p><button class="btn primary" type="button" id="naStart">Empezar a esperar</button>'
+        : ready ? '<p>Ya esperaste el tiempo. Si nadie contestó, avisa a administración. Se guardará tu ubicación para revisar el caso.</p><button class="btn primary" type="button" id="naSend"' + (sending ? ' disabled' : '') + '>' + (sending ? 'Enviando…' : 'Avisar a administración') + '</button>'
+        : '<p>Espera aquí e intenta contactar al cliente.</p><div style="font-size:44px;font-weight:800;text-align:center;margin:8px 0" id="naLeft">' + fmt(left) + '</div><p class="inc-note">El botón para avisar se activa cuando termine el tiempo.</p>') +
+      '<div class="err inc-note" id="naErr"></div><button class="btn ghost" type="button" id="naClose">Cerrar</button></div>';
+    document.getElementById('naClose').addEventListener('click', close);
+    const st = document.getElementById('naStart'); if (st) st.addEventListener('click', () => { t0 = Date.now(); lsSet(key, String(t0)); draw(); });
+    const sd = document.getElementById('naSend'); if (sd) sd.addEventListener('click', send);
+  };
+  async function send() {
+    if (sending) return; sending = true; draw();
+    let gps = 'sin GPS';
+    try { const p = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000, maximumAge: 20000 })); gps = 'GPS ' + p.coords.latitude.toFixed(5) + ',' + p.coords.longitude.toFixed(5); } catch (e) {}
+    const nota = ('NO CONTESTAN · esperó ' + Math.round(wait / 60000) + ' min · ' + gps).slice(0, 200), iid = newId();
+    try {
+      await setDoc(doc(db, 'incidencias', iid), { id: iid, orderId: id, driverId: S.uid, driverName: S.name || 'Repartidor', shop: o.shop || '', folio: folio(id), tipo: 'otro', nota, estado: 'abierta', creadoEn: Date.now() });
+      lsSet(key, ''); lsSet('gasca_naSent_' + id, '1'); sending = false; clearInterval(timer); draw(true); render();
+    } catch (e) { sending = false; draw(); const er = document.getElementById('naErr'); if (er) er.textContent = 'No se pudo enviar. Escríbenos por WhatsApp.'; }
+  }
+  draw();
+  timer = setInterval(() => { if (!document.getElementById('issueModal')) { clearInterval(timer); return; } if (t0 && !sending) { const l = document.getElementById('naLeft'); const left = t0 + wait - Date.now(); if (left <= 0) draw(); else if (l) l.textContent = fmt(left); } }, 1000);
+}
+function askLib(id) {
+  const o = byId(id);
+  if (!canAct() || !o || o.driverId !== S.uid || o.estado !== 'recogido' || document.getElementById('issueModal')) return;
+  const m = document.createElement('div'); m.id = 'issueModal'; document.body.appendChild(m);
+  m.innerHTML = '<div class="box"><h3>🔑 Código de administración</h3><p>Escribe el código de 6 números que te dio administración para liberar este pedido.</p><input id="libIn" type="text" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="000000" style="width:100%;box-sizing:border-box;font-size:30px;text-align:center;letter-spacing:6px;padding:12px;border:2px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink)"><div class="err inc-note" id="libErr"></div><button class="btn primary" type="button" id="libGo">Liberar pedido</button><button class="btn ghost" type="button" id="libClose">Cancelar</button></div>';
+  document.getElementById('libClose').addEventListener('click', closeIssue);
+  document.getElementById('libIn').focus();
+  document.getElementById('libGo').addEventListener('click', async () => {
+    const code = document.getElementById('libIn').value.replace(/\D/g, ''), er = document.getElementById('libErr');
+    if (code.length !== 6) { er.textContent = 'Son 6 números.'; return; }
+    const btn = document.getElementById('libGo'); btn.disabled = true;
+    const ok = await libDeliver(id, code);
+    if (ok) closeIssue(); else { er.textContent = 'Código incorrecto o todavía no liberado. Pídelo a administración.'; btn.disabled = false; }
+  });
+}
+async function libDeliver(id, code) {
+  const o = byId(id);
+  if (!canAct() || !o || o.driverId !== S.uid || o.estado !== 'recogido' || S.busy.has(id)) return false;
+  S.busy.add(id);
+  try {
+    await runTransaction(db, async (tx) => {
+      const oref = doc(db, 'orders', id), wref = doc(db, 'wallets', S.uid);
+      const os = await tx.get(oref), ws = await tx.get(wref);
+      const d = os.exists() ? os.data() : null;
+      if (!d || d.estado !== 'recogido' || d.driverId !== S.uid || !ws.exists()) throw new Error('state');
+      const com = (Number(d.tarifa) || 0) * COM_C, now = Date.now();
+      tx.update(oref, { estado: 'entregado', entregadoEn: now, codigoIn: code, liberado: true });
+      tx.update(wref, { saldoC: (Number(ws.data().saldoC) || 0) - com, lastOrder: id });
+      tx.set(doc(db, 'movs', 'cm_' + id), { driverId: S.uid, tipo: 'comision', montoC: -com, orderId: id, creadoEn: now });
+    });
+    deliveredLocal(id, o); lsSet('gasca_naSent_' + id, '');
+    toast('Pedido liberado por administración. Se descontó ' + cents(comC(o)) + ' de comisión.');
+    S.busy.delete(id); render(); return true;
+  } catch (e) { S.busy.delete(id); render(); return false; }
+}
+const newLibCode = () => { const a = new Uint32Array(1); (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : (a[0] = Math.floor(Math.random() * 4e9)); return String(100000 + (a[0] % 900000)); };
+const incCode = (id, oid) => incAct(id, async () => {
+  const o = byId(oid); if (!o || o.estado !== 'recogido' || !o.driverId) throw new Error('state');
+  S.libs = S.libs || {};
+  const ref = doc(db, 'liberaciones', oid), cur = await getDoc(ref);
+  if (cur.exists() && cur.data().driverId === o.driverId) S.libs[oid] = cur.data().codigo;
+  else { const c = newLibCode(); await setDoc(ref, { orderId: oid, driverId: o.driverId, codigo: c, creadoEn: Date.now(), incId: id }); S.libs[oid] = c; }
+}, 'Código listo. Díctaselo al repartidor.');
 function incDiv() {
   let el = document.getElementById('adminIncid');
   if (!el) { el = document.createElement('div'); el.id = 'adminIncid'; el.className = 'stack'; el.hidden = true; const ref = document.getElementById('adminSaldos'); ref.parentNode.insertBefore(el, ref.nextSibling); }
@@ -1772,10 +1857,14 @@ function renderIncid(el) {
     const live = o && (o.estado === 'asignado' || o.estado === 'recogido');
     const wa = supportUrl('').split('?')[0];
     return '<article class="order"><div class="head"><span class="folio">' + esc(x.driverName || 'Repartidor') + '</span><span class="chip ' + (open ? 'abierto' : 'entregado') + '">' + (open ? 'Sin atender' : 'Atendida') + '</span><span class="ago">' + ago(x.creadoEn) + '</span></div>' +
-      '<div class="line"><span class="k">Problema</span><span class="v"><b>' + esc(INC_TIPOS[x.tipo] || x.tipo) + '</b></span></div>' +
-      (x.nota ? '<div class="line"><span class="k">Nota</span><span class="v">' + esc(x.nota) + '</span></div>' : '') +
+      '<div class="line"><span class="k">Problema</span><span class="v"><b>' + (NOANS_RE.test(x.nota || '') ? '📵 Nadie contesta en la entrega' : esc(INC_TIPOS[x.tipo] || x.tipo)) + '</b></span></div>' +
+      (x.nota ? '<div class="line"><span class="k">Nota</span><span class="v">' + esc(x.nota) + noansMap(x.nota) + '</span></div>' : '') +
       '<div class="line"><span class="k">Pedido</span><span class="v">' + esc(x.folio || '') + ' · ' + esc(x.shop || '') + (o ? ' · ' + esc(LABEL[o.estado] || o.estado) + ' · ' + esc(o.dest) : '') + '</span></div>' +
+      (S.libs && S.libs[x.orderId] && o && o.estado === 'recogido' ? '<div class="paynote">Código de liberación: <b style="font-size:26px;letter-spacing:4px">' + esc(S.libs[x.orderId]) + '</b><br><small>Díctaselo al repartidor después de hablar con el cliente y el restaurante.</small></div>' : '') +
+      (o && o.liberado ? '<div class="line"><span class="k">Resultado</span><span class="v"><b>🔑 Liberado por administración</b></span></div>' : '') +
       (open ? '<div class="actions">' +
+        (o && o.estado === 'recogido' && NOANS_RE.test(x.nota || '') ? '<button class="btn primary small" type="button" data-act="inc-code" data-id="' + esc(x.id) + '" data-oid="' + esc(x.orderId) + '"' + (busy ? ' disabled' : '') + '>🔑 Código de liberación</button>' +
+          '<button class="btn ghost small" type="button" data-act="inc-release" data-id="' + esc(x.id) + '" data-oid="' + esc(x.orderId) + '"' + (busy ? ' disabled' : '') + '>Liberar yo (sin código)</button>' : '') +
         (live ? '<button class="btn ghost small" type="button" data-act="inc-reopen" data-id="' + esc(x.id) + '" data-oid="' + esc(x.orderId) + '"' + (busy ? ' disabled' : '') + '>Reasignar pedido</button>' +
           '<button class="btn danger small" type="button" data-act="inc-cancel" data-id="' + esc(x.id) + '" data-oid="' + esc(x.orderId) + '"' + (busy ? ' disabled' : '') + '>Cancelar pedido</button>' : '') +
         '<button class="btn primary small" type="button" data-act="inc-ok" data-id="' + esc(x.id) + '"' + (busy ? ' disabled' : '') + '>Marcar atendida</button></div>' : '') + '</article>';
@@ -1793,6 +1882,15 @@ const incReopen = (id, oid) => incAct(id, async () => {
   await updateDoc(doc(db, 'orders', oid), { estado: 'abierto', driverId: '', driverName: '', asignadoEn: null, recogidoEn: null });
   await updateDoc(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: Date.now(), accion: 'reasignado' });
 }, 'Pedido liberado para otro repartidor.');
+const incRelease = (id, oid) => incAct(id, async () => {
+  const o = byId(oid); if (!o || o.estado !== 'recogido' || !o.driverId) throw new Error('state');
+  const com = (Number(o.tarifa) || 0) * COM_C, now = Date.now(), b = writeBatch(db);
+  b.update(doc(db, 'orders', oid), { estado: 'entregado', entregadoEn: now, liberado: true, liberadoMotivo: 'nadie contesto' });
+  b.update(doc(db, 'wallets', o.driverId), { saldoC: increment(-com) });
+  b.set(doc(db, 'movs', 'cm_' + oid), { driverId: o.driverId, tipo: 'comision', montoC: -com, orderId: oid, creadoEn: now });
+  b.update(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: now, accion: 'liberado' });
+  await b.commit();
+}, 'Pedido liberado como entregado. Se cobró la comisión.');
 const incCancel = (id, oid) => incAct(id, async () => {
   await updateDoc(doc(db, 'orders', oid), { estado: 'cancelado', canceladoEn: Date.now() });
   await updateDoc(doc(db, 'incidencias', id), { estado: 'atendida', atendidaEn: Date.now(), accion: 'cancelado' });
