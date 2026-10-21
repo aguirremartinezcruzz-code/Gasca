@@ -180,6 +180,7 @@ const VER_CLI = [
 const slotsFor = (u) => (isCli(u) ? VER_CLI : VER[u && u.role] || []);
 const telEmail = (x) => { const d = String(x || '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) + TEL_DOM : ''; };
 const telOf = (email) => String(email || '').endsWith(TEL_DOM) ? email.slice(0, -TEL_DOM.length) : '';
+function fotoOk(k) { return !!safeImg(S.fotos[k]) && (!(S.profile && S.profile.cambioEn) || ((S.fotosT || {})[k] || 0) > S.profile.cambioEn); }
 function safeImg(s) { return typeof s === 'string' && s.length < 260000 && /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(s) ? s : ''; }
 function personStatus(u, a) {
   const docsEn = (u && u.docsEn) || 0;
@@ -389,9 +390,9 @@ function startPerson() {
     syncRole(); render();
   });
   listen(unsubs, collection(db, 'docs', S.uid, 'fotos'), (snap) => {
-    const m = {};
-    snap.docs.forEach((d) => { const x = d.data(); if (x && safeImg(x.img)) m[d.id] = x.img; });
-    S.fotos = m; render();
+    const m = {}, tt = {};
+    snap.docs.forEach((d) => { const x = d.data(); if (x && safeImg(x.img)) { m[d.id] = x.img; tt[d.id] = x.creadoEn || 0; } });
+    S.fotos = m; S.fotosT = tt; render();
   });
   pushPresence();
 }
@@ -793,7 +794,7 @@ async function uploadTicket(id, file) {
 }
 async function sendDocs() {
   const slots = slotsFor(S.profile);
-  const have = slots.every((s) => safeImg(S.fotos[s.k]));
+  const have = slots.every((s) => fotoOk(s.k));
   if (!canAct() || !have || !S.consent || S.busy.has('verify')) return;
   if (!regDone()) return;
   S.busy.add('verify'); render();
@@ -988,13 +989,14 @@ function renderVerify() {
       '<button class="btn ghost block" type="button" data-act="ver-edit">Cambiar mis documentos</button>';
     return;
   }
+  if (st === 'eliminado' && S.swr) { renderSwitch(el); return; }
   const a = S.myAprob;
   let h = headH + '<p class="lede">' + (S.role === 'rider' ? 'Para recibir pedidos necesitamos 6 fotos. Solo sirven para confirmar quién eres.' : isCli(S.profile) ? 'Para pedir mandaditos necesitamos 3 fotos: tu selfie y tu INE por los dos lados. Solo sirven para confirmar quién eres.' : 'Para pedir motos necesitamos 3 fotos. Solo sirven para confirmar tu negocio.') + '</p>';
-  if (st === 'eliminado') h += '<div class="banner"><b>Tu cuenta fue dada de baja.</b> Si quieres volver a usar Gasca, revisa tus documentos y envíalos otra vez. La administración los revisará con atención.</div>';
+  if (st === 'eliminado') h += '<div class="banner"><b>Tu cuenta fue dada de baja.</b> Si quieres volver a usar Gasca, revisa tus documentos y envíalos otra vez. La administración los revisará con atención.</div><button class="btn ghost block" type="button" data-act="swr-open" style="margin:10px 0">Quiero entrar con otro perfil</button>';
   if (st === 'rechazado') h += '<div class="banner"><b>No se aprobaron tus documentos.</b> ' + esc(a && a.motivo ? a.motivo : 'Revisa las fotos y súbelas de nuevo.') + '</div>';
   let ready = 0;
   slots.forEach((s) => {
-    const im = safeImg(S.fotos[s.k]), up = !!S.uploading[s.k];
+    const im = fotoOk(s.k) ? safeImg(S.fotos[s.k]) : '', up = !!S.uploading[s.k];
     if (im) ready++;
     h += '<div class="slot"><div class="t"><b>' + esc(s.t) + '</b>' + (up ? '<span class="chip abierto">Subiendo…</span>' : (im ? '<span class="chip entregado">Lista</span>' : '<span class="chip">Falta</span>')) + '</div>' +
       '<p class="hint">' + esc(s.h) + '</p>' + (im ? '<img class="thumb" src="' + im + '" alt="' + esc(s.t) + '">' : '') +
@@ -1499,6 +1501,10 @@ document.addEventListener('click', (e) => {
   else if (act === 'owner-check') ownerCheck();
   else if (act === 'owner-resend') ownerResend();
   else if (act === 'reset') resetPass();
+  else if (act === 'swr-open') { S.swr = true; S.swrRole = ''; S.swrName = (S.profile && S.profile.name) || ''; S.swrAddr = ''; S.swrTel = ''; render(); }
+  else if (act === 'swr-close') { S.swr = false; render(); }
+  else if (act === 'swr-pick') { S.swrRole = b.getAttribute('data-r'); render(); }
+  else if (act === 'swr-go') switchRole();
   else if (act === 'tab') { S.tab = b.getAttribute('data-tab'); S.cancelId = null; render(); }
   else if (act === 'cancel') { S.cancelId = id; render(); }
   else if (act === 'cancel-no') { S.cancelId = null; render(); }
@@ -2364,4 +2370,33 @@ function adminHome(list) {
   const h = '<h2 class="section">Panel de administración</h2><p class="hint">Toca una sección para entrar.</p><div class="ah-g">' +
     (list || []).map((t) => { const a = AH[t.id] || ['•', t.label, '']; return '<button type="button" class="ah-c" data-act="tab" data-tab="' + t.id + '"><span class="ah-i">' + a[0] + '</span><b>' + esc(a[1]) + '</b><small>' + esc(a[2]) + '</small>' + (t.badge ? '<span class="ah-b">' + t.badge + '</span>' : '') + '</button>'; }).join('') + '</div>';
   if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
+}
+
+/* ---------- cambiar de perfil estando dada de baja (misma cuenta) ---------- */
+function renderSwitch(el) {
+  if (document.activeElement && /^(sw-name|sw-addr|sw-tel)$/.test(document.activeElement.id || '')) return;
+  const r = S.swrRole, card = (v, ic, t, sm) => '<button type="button" class="wc-card' + (r === v ? ' sel' : '') + '" data-act="swr-pick" data-r="' + v + '" style="' + (r === v ? 'border-color:#f6b400;box-shadow:0 0 0 3px rgba(246,180,0,.35)' : '') + '"><span class="wc-ic" style="background:#fff3cf" aria-hidden="true">' + ic + '</span><span><b>' + t + '</b><small>' + sm + '</small></span></button>';
+  el.innerHTML = '<h1>Cambiar de perfil</h1><p class="lede">Sigues teniendo una sola cuenta, con tu mismo correo. Elige con qué perfil quieres entrar ahora.</p>' +
+    card('shop', '🏪', 'Para negocios', 'Soy tienda o restaurante') + card('rider', '🛵', 'Repartidor', 'Recibo pedidos y acepto') + card('cliente', '📦', 'Para envíos personales', 'Quiero enviar algo') +
+    (r ? '<div class="field"><label for="sw-name">' + (r === 'shop' ? 'Nombre del negocio' : 'Tu nombre completo') + '</label><input id="sw-name" type="text" maxlength="60" value="' + esc(S.swrName) + '"></div>' : '') +
+    (r === 'shop' ? '<div class="field"><label for="sw-addr">Dirección de recogida</label><input id="sw-addr" type="text" maxlength="160" placeholder="Calle, número y colonia" value="' + esc(S.swrAddr) + '"></div>' : '') +
+    (r === 'cliente' ? '<div class="field"><label for="sw-tel">Tu teléfono (10 dígitos)</label><input id="sw-tel" type="tel" inputmode="numeric" maxlength="14" value="' + esc(S.swrTel) + '"></div>' : '') +
+    '<p class="hint">Después te pediremos de nuevo tus documentos, y la administración los revisará.</p>' +
+    '<div class="actions"><button class="btn ghost" type="button" data-act="swr-close">Cancelar</button><button class="btn primary" type="button" data-act="swr-go"' + (r && !S.busy.has('swr') ? '' : ' disabled') + '>Continuar</button></div>';
+}
+document.addEventListener('input', (e) => { const t = e.target; if (!t || !t.id) return; if (t.id === 'sw-name') S.swrName = t.value; else if (t.id === 'sw-addr') S.swrAddr = t.value; else if (t.id === 'sw-tel') S.swrTel = t.value; });
+async function switchRole() {
+  const r = S.swrRole, name = (S.swrName || '').trim();
+  if (!r || !S.profile || S.busy.has('swr') || !canAct()) return;
+  if (name.length < 2) { toast('Escribe tu nombre.'); return; }
+  const base = { id: S.uid, role: r === 'rider' ? 'rider' : 'shop', name: name.slice(0, 60), creadoEn: S.profile.creadoEn || Date.now(), cambioEn: Date.now(), fotos: [] };
+  if (r === 'shop') { const a = (S.swrAddr || '').trim(); if (a.length < 5) { toast('Escribe la dirección de recogida.'); return; } base.addr = a.slice(0, 160); }
+  if (r === 'cliente') { const t = (S.swrTel || '').replace(/\D/g, ''); if (t.length !== 10) { toast('Escribe tu teléfono de 10 dígitos.'); return; } base.addr = 'CLIENTE · Tel ' + t; }
+  S.busy.add('swr'); render();
+  try {
+    await setDoc(doc(db, 'users', S.uid), base);
+    S.swr = false; S.tab = ''; S.verEdit = false; S.consent = false;
+    toast('Listo. Ahora envía tus documentos.');
+  } catch (e) { toast('No se pudo cambiar el perfil. Intenta de nuevo.'); }
+  S.busy.delete('swr'); render();
 }
