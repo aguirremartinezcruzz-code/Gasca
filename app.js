@@ -2033,7 +2033,7 @@ function wzInit() {
   wzF('o-cliente').insertAdjacentHTML('beforebegin', '<div id="wzFreq"></div>');
   wzF('o-desc').insertAdjacentHTML('afterend', '<div id="wzLast"></div>');
   const st = document.createElement('style');
-  st.textContent = '.wz-on .wz-off{display:none!important}.wz-on .sec-h{display:none!important}.wz-on .sumbox{margin:8px 0!important;padding:10px 14px!important}#wzSum:empty{display:none}.wz-bar{height:8px;background:var(--line,#dde3ea);border-radius:99px;overflow:hidden}.wz-bar i{display:block;height:100%;background:#f6b400;border-radius:99px;transition:width .3s}.wz-n{margin:8px 0 4px;font-weight:700;opacity:.65;font-size:14px}#wzTitle{font-size:24px;line-height:1.2;margin:6px 0 4px}#wzHint{margin:0 0 16px}#wzNav{display:flex;gap:10px;margin-top:16px}#wzNav .btn{flex:1;min-height:52px;font-size:17px}.wzchips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 14px}.wzchip{border:2px solid var(--line,#cfd6de);background:#fff;border-radius:14px;padding:8px 12px;font-weight:700;text-align:left;min-height:48px}.wzchip small{display:block;font-weight:400;opacity:.65}.wzlab{display:block;font-weight:700;opacity:.7;margin-top:4px}.wzsum a{margin-left:6px;font-weight:700}#wzLast .btn{margin:12px 0}#wzDone{position:fixed;inset:0;z-index:60;background:var(--bg,#eef1f5);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center}#wzDone .btn{width:100%;max-width:320px;min-height:52px;font-size:17px}#wzDone h2{margin:0;font-size:26px}#wzDone .radar{margin:0 auto}';
+  st.textContent = '.wz-on .wz-off{display:none!important}.wz-on .sec-h{display:none!important}.wz-on .sumbox{margin:8px 0!important;padding:10px 14px!important}#wzSum:empty{display:none}.wz-bar{height:8px;background:var(--line,#dde3ea);border-radius:99px;overflow:hidden}.wz-bar i{display:block;height:100%;background:#f6b400;border-radius:99px;transition:width .3s}.wz-n{margin:8px 0 4px;font-weight:700;opacity:.65;font-size:14px}#wzTitle{font-size:24px;line-height:1.2;margin:6px 0 4px}#wzHint{margin:0 0 16px}#wzNav{display:flex;gap:10px;margin-top:16px}#wzNav .btn{flex:1;min-height:52px;font-size:17px}.wzchips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 14px}.wzchip{border:2px solid var(--line,#cfd6de);background:#fff;border-radius:14px;padding:8px 12px;font-weight:700;text-align:left;min-height:48px}.wzchip small{display:block;font-weight:400;opacity:.65}.wzlab{display:block;font-weight:700;opacity:.7;margin-top:4px}.wzsum a{margin-left:6px;font-weight:700}#wzLast .btn{margin:12px 0}#wzDone{position:fixed;inset:0;z-index:60;background:var(--bg,#eef1f5);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center}#wzDone .btn{width:100%;max-width:320px;min-height:52px;font-size:17px}#wzDone h2{margin:0;font-size:26px}.wzoffer{background:#fff;border:3px solid #1f9d55;border-radius:22px;padding:14px 16px;box-shadow:0 10px 26px rgba(31,157,85,.3);animation:wzpop .35s cubic-bezier(.2,1.3,.3,1) both;margin-bottom:10px}.wzoffer small{display:block;font-size:16px;font-weight:700}.wzoffer b{display:block;font-size:46px;line-height:1.1;color:#1f9d55;margin:4px 0 10px}.wzoa{display:flex;gap:10px}.wzoa .btn{flex:1;white-space:nowrap;min-height:52px;font-size:17px;font-weight:800}@keyframes wzpop{from{transform:scale(.8);opacity:0}to{transform:none;opacity:1}}#wzDone .radar{margin:0 auto}';
   document.head.appendChild(st);
   f.addEventListener('click', (e) => {
     const t = e.target.closest ? e.target : null; if (!t || wzOff()) return;
@@ -2079,15 +2079,15 @@ function wzSync() {
     $('#wzLast').innerHTML = wzLoad(wzLastKey()) ? '<button type="button" class="btn ghost block" id="wzRepeat">↻ Repetir mi último pedido</button>' : '';
   }
 }
-let wzDoneT = null;
+let wzDoneT = null, wzOfSig = '';
 function wzDone(id) {
   if (wzOff()) return;
   WZ.step = 0; WZ.dirty = true;
   const old = document.getElementById('wzDone'); if (old) old.remove();
-  clearInterval(wzDoneT);
+  clearInterval(wzDoneT); wzOfSig = '';
   const t0 = Date.now(), pers = (() => { const o = byId(id); return o ? isP(o) : isCli(S.profile); })();
   const d = document.createElement('div'); d.id = 'wzDone';
-  d.innerHTML = '<div class="radar on" aria-hidden="true"><div class="rings"><i></i><i></i><i></i><span class="sweep"></span><span class="core">🛵</span></div></div><h2 id="wzDoneT">Buscando repartidor…</h2><p class="hint" id="wzDoneS">Pedido ' + esc(folio(id)) + '</p>' +
+  d.innerHTML = '<div class="radar on" aria-hidden="true"><div class="rings"><i></i><i></i><i></i><span class="sweep"></span><span class="core">🛵</span></div></div><h2 id="wzDoneT">Buscando repartidor…</h2><p class="hint" id="wzDoneS">Pedido ' + esc(folio(id)) + '</p><div id="wzOf" style="width:100%;max-width:340px"></div>' +
     (pers ? '<p class="paynote" id="wzDoneC" style="margin:0">Tiempo para que alguien la tome: <b id="wzCd">…</b> s</p>' : '') +
     '<button type="button" class="btn primary" data-wzd="ver">Ver mi pedido</button>';
   document.body.appendChild(d);
@@ -2103,7 +2103,16 @@ function wzDone(id) {
       setTimeout(() => { if (document.getElementById('wzDone') === d) close(); }, 2500); return;
     }
     if (o.estado === 'cancelado') { close(); return; }
-    if (S.ofertas.some((x) => x.orderId === id && x.estado === 'pendiente')) { try { beep([784, 988]); } catch (e) {} close('Un repartidor te hizo una contraoferta. Revísala.'); return; }
+    { const offs = S.ofertas.filter((x) => x.orderId === id && x.estado === 'pendiente').sort((a, b) => a.monto - b.monto).slice(0, 3);
+      const sig = offs.map((x) => x.id + (S.busy.has('oy' + x.id) ? 'b' : '')).join('|');
+      if (sig !== wzOfSig) {
+        const isNew = offs.some((x) => wzOfSig.indexOf(x.id) < 0);
+        wzOfSig = sig;
+        $('#wzOf').innerHTML = offs.map((x) => '<div class="wzoffer"><small>🛵 ' + esc(x.driverName) + ' te ofrece hacerlo por</small><b>' + pesos(x.monto) + '</b><div class="wzoa"><button type="button" class="btn ghost" data-act="of-no" data-oid="' + esc(x.id) + '">No, gracias</button><button type="button" class="btn primary" data-act="of-yes" data-oid="' + esc(x.id) + '"' + (S.busy.has('oy' + x.id) ? ' disabled' : '') + '>✔ Aceptar</button></div></div>').join('');
+        $('#wzDoneT').textContent = offs.length ? '¡Tienes una oferta!' : 'Buscando repartidor…';
+        if (isNew) { try { ensureAudio(); beep([784, 988, 1175]); buzz(); } catch (e) {} }
+      }
+    }
     if (isExpired(o)) { try { beep([440, 330]); } catch (e) {} close(); return; }
     const c = $('#wzCd'); if (c) c.textContent = Math.max(0, Math.ceil((deadline(o) - Date.now()) / 1000));
   }, 400);
