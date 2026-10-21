@@ -179,7 +179,7 @@ const VER_CLI = [
 ];
 const slotsFor = (u) => (isCli(u) ? VER_CLI : VER[u && u.role] || []);
 const telEmail = (x) => { const d = String(x || '').replace(/\D/g, ''); return d.length >= 10 ? d.slice(-10) + TEL_DOM : ''; };
-const telOf = (email) => String(email || '').endsWith(TEL_DOM) ? email.slice(0, -TEL_DOM.length) : '';
+const telOf = (email) => { const e = String(email || ''); if (!e.endsWith(TEL_DOM)) return ''; const l = e.slice(0, -TEL_DOM.length); return /^\d+$/.test(l) ? l : ''; };
 function fotoOk(k) { return !!safeImg(S.fotos[k]) && (!(S.profile && S.profile.cambioEn) || ((S.fotosT || {})[k] || 0) > S.profile.cambioEn); }
 function safeImg(s) { return typeof s === 'string' && s.length < 260000 && /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(s) ? s : ''; }
 function personStatus(u, a) {
@@ -244,7 +244,7 @@ function setMode(m) {
   $('#authBtn').textContent = { login: 'Entrar', signup: 'Crear cuenta', owner: 'Entrar', profile: 'Guardar' }[m];
   $('#authBtn2').hidden = !ow;
   { const cl = form && roleVal() === 'cliente';
-    $('#fEmail').hidden = pr || cl; $('#fTel').hidden = !(su && cl);
+    $('#fEmail').hidden = pr || cl; $('#fTel').hidden = !((su || (pr && !telOf(S.email))) && cl);
     $('#a-email').type = 'text';
     document.querySelector('label[for="a-email"]').textContent = m === 'login' ? 'Correo o teléfono' : 'Correo';
     if (cl) { $('#lblName').textContent = 'Tu nombre completo'; $('#a-name').placeholder = 'Ej. María López'; }
@@ -314,8 +314,8 @@ af.addEventListener('submit', async (e) => {
       await createProfile(cred.user.uid, { role, name, addr, tel });
     } else if (m === 'profile') {
       const pe = needProfile(); if (pe) return fail(pe);
-      const ptel = telOf(S.user && S.user.email);
-      if (role === 'cliente' && !ptel) return fail('Para ser cliente crea tu cuenta con tu teléfono. Toca Salir y elige "Crear cuenta".');
+      const ptel = telOf(S.user && S.user.email) || (tel.length === 10 ? tel : '');
+      if (role === 'cliente' && !ptel) return fail('Escribe tu número de teléfono de 10 dígitos.');
       setBusy(true);
       await createProfile(S.uid, { role, name, addr, tel: ptel });
     }
@@ -1879,7 +1879,7 @@ function cliSum() {
 (function () {
   const st = document.createElement('style');
   st.textContent = '.top{flex-wrap:wrap;row-gap:10px}.who{order:3;flex:1 1 100%;max-width:100%!important;display:flex;align-items:center;gap:9px;text-align:left;white-space:normal!important;padding:8px 14px!important;border-radius:14px!important;font-size:14px;line-height:1.25}' +
-    '.who::before{content:"";flex:0 0 9px;height:9px;border-radius:50%;background:var(--green,#17803F)}.who::after{content:"☰ Menú";margin-left:auto;padding-left:10px;font-size:13px;font-weight:700;color:var(--muted);text-decoration:underline}';
+    '.who::before{content:"";flex:0 0 9px;height:9px;border-radius:50%;background:var(--green,#17803F)}.who::after{content:"Salir";margin-left:auto;padding-left:10px;font-size:13px;font-weight:700;color:var(--muted);text-decoration:underline}';
   document.head.appendChild(st);
 })();
 
@@ -2593,110 +2593,125 @@ function tarFor(km) {
 })();
 
 
-/* ---------- menú y dos perfiles (repartidor y restaurante) con el mismo correo ---------- */
+/* ---------- menú y perfiles múltiples con el mismo correo ---------- */
 (function () {
-  const SUF = { shop: '+gasca-negocio', rider: '+gasca-repartidor' };
-  const LBL = { shop: 'restaurante', rider: 'repartidor' };
-  const ICO = { shop: '🍽️', rider: '🛵' };
+  const SUF = { shop: '+gasca-negocio', rider: '+gasca-repartidor', cliente: '+gasca-personal' };
+  const LBL = { shop: 'restaurante', rider: 'repartidor', cliente: 'envíos personales' };
+  const ICO = { shop: '🍽️', rider: '🛵', cliente: '📦' };
+  const ALLOW = { rider: ['shop', 'cliente'], shop: ['rider'], cliente: ['rider'] };
+  const NO_MIX = { shop: 'cliente', cliente: 'shop' };
   const parts = (e) => { e = String(e || '').toLowerCase(); const i = e.lastIndexOf('@'); return i < 1 ? null : { l: e.slice(0, i), d: e.slice(i + 1) }; };
-  const suffixRole = (e) => { const p = parts(e); if (!p) return ''; return p.l.endsWith(SUF.shop) ? 'shop' : p.l.endsWith(SUF.rider) ? 'rider' : ''; };
-  const baseOf = (e) => { const p = parts(e); return p ? p.l.replace(/\+gasca-(negocio|repartidor)$/, '') + '@' + p.d : ''; };
-  const aliasOf = (e, r) => { const p = parts(baseOf(e)); return p.l + SUF[r] + '@' + p.d; };
+  const suffixKind = (e) => { const p = parts(e); if (!p) return ''; return Object.keys(SUF).find((k) => p.l.endsWith(SUF[k])) || ''; };
+  const baseOf = (e) => { const p = parts(e); return p ? p.l.replace(/\+gasca-(negocio|repartidor|personal)$/, '') + '@' + p.d : ''; };
+  const aliasOf = (e, k) => { const p = parts(baseOf(e)); return p.l + SUF[k] + '@' + p.d; };
+  const bkKey = () => 'gasca_bk_' + baseOf(S.email);
+  const myKind = () => isCli(S.profile) ? 'cliente' : (S.role === 'rider' || S.role === 'shop' ? S.role : null);
   function info() {
-    if (!S.user || S.isAdmin || S.ownerEmail || telOf(S.email) || isCli(S.profile)) return null;
-    const sr = suffixRole(S.email);
-    if (sr) return { cur: sr, other: sr === 'shop' ? 'rider' : 'shop', target: baseOf(S.email), back: true };
-    if (S.role !== 'rider' && S.role !== 'shop') return null;
-    const other = S.role === 'shop' ? 'rider' : 'shop';
-    return { cur: S.role, other, target: aliasOf(S.email, other), back: false };
+    if (!S.user || S.isAdmin || S.ownerEmail) return null;
+    const sk = suffixKind(S.email);
+    if (sk) { const bk = lsGet(bkKey()) || ''; return { cur: sk, back: true, opts: [{ kind: LBL[bk] ? bk : '', target: baseOf(S.email) }] }; }
+    const k = myKind(); if (!k) return null;
+    if (lsGet(bkKey()) !== k) lsSet(bkKey(), k);
+    return { cur: k, back: false, opts: ALLOW[k].map((x) => ({ kind: x, target: aliasOf(S.email, x) })) };
   }
+  const optTxt = (o) => o.kind ? 'modo ' + LBL[o.kind] : 'mi otro perfil';
   const st = document.createElement('style');
-  st.textContent = '#gMenu{position:fixed;inset:0;z-index:9000;background:rgba(15,20,28,.55);display:flex;align-items:flex-end;justify-content:center}#gMenu[hidden]{display:none}#gMenu .gm{width:100%;max-width:480px;background:#fff;color:#16202a;border-radius:22px 22px 0 0;padding:20px 18px 26px;box-shadow:0 -10px 40px rgba(0,0,0,.25)}#gMenu h3{margin:0 0 4px;font-size:20px}#gMenu p{margin:4px 0 12px;font-size:14.5px;opacity:.8}#gMenu button{display:block;width:100%;min-height:54px;margin-top:10px;border-radius:16px;border:2px solid #16202a;background:#fff;color:#16202a;font:inherit;font-weight:800;font-size:16.5px;padding:10px 14px}#gMenu button.pri{background:#f6b400;border-color:#f6b400}#gMenu button.dk{background:#16202a;color:#fff}#gMenu button.gh{border-color:#cfd6de;font-weight:700}#gMenu input{width:100%;min-height:50px;border:2px solid #cfd6de;border-radius:14px;padding:8px 12px;font:inherit;font-size:17px;margin-top:8px}#gMenu .er{color:#b3261e;font-weight:700;margin:8px 0 0;font-size:14px}#gMenu .gr{display:grid;grid-template-columns:1fr 1fr;gap:10px}#gMenu .gr button{min-height:110px;font-size:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}#gMenu .gr small{font-weight:600;opacity:.75;font-size:13px}';
+  st.textContent = '.who.has-menu::after{content:"☰ Menú"!important}#gMenu{position:fixed;inset:0;z-index:9000;background:rgba(15,20,28,.55);display:flex;align-items:flex-end;justify-content:center}#gMenu[hidden]{display:none}#gMenu .gm{width:100%;max-width:480px;background:#fff;color:#16202a;border-radius:22px 22px 0 0;padding:20px 18px 26px;box-shadow:0 -10px 40px rgba(0,0,0,.25)}#gMenu h3{margin:0 0 4px;font-size:20px}#gMenu p{margin:4px 0 12px;font-size:14.5px;opacity:.8}#gMenu button{display:block;width:100%;min-height:54px;margin-top:10px;border-radius:16px;border:2px solid #16202a;background:#fff;color:#16202a;font:inherit;font-weight:800;font-size:16.5px;padding:10px 14px}#gMenu button.pri{background:#f6b400;border-color:#f6b400}#gMenu button.dk{background:#16202a;color:#fff}#gMenu button.gh{border-color:#cfd6de;font-weight:700}#gMenu input{width:100%;min-height:50px;border:2px solid #cfd6de;border-radius:14px;padding:8px 12px;font:inherit;font-size:17px;margin-top:8px}#gMenu .er{color:#b3261e;font-weight:700;margin:8px 0 0;font-size:14px}#gMenu .gr{display:grid;grid-template-columns:1fr 1fr;gap:10px}#gMenu .gr button{min-height:110px;font-size:17px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}';
   document.head.appendChild(st);
   const el = document.createElement('div'); el.id = 'gMenu'; el.hidden = true; document.body.appendChild(el);
-  let mode = '', err = '', busy = false;
-  const close = () => { el.hidden = true; mode = ''; err = ''; };
+  let mode = '', err = '', busy = false, pick = null, chooseOpts = [];
+  const close = () => { el.hidden = true; mode = ''; err = ''; pick = null; };
+  const gpw = () => (S.pwFor === S.email ? S.pw || '' : '');
   function paint() {
     const i = info();
-    if (mode === 'menu') {
-      el.innerHTML = '<div class="gm"><h3>☰ Menú</h3><p>' + esc(S.name || '') + (i ? ' · modo ' + LBL[i.cur] : '') + '</p>' +
-        (i ? '<button class="pri" data-gm="switch">🔁 Cambiar a modo ' + LBL[i.other] + '</button>' : '') +
+    if (mode === 'menu' && i) {
+      el.innerHTML = '<div class="gm"><h3>☰ Menú</h3><p>' + esc(S.name || '') + ' · modo ' + LBL[i.cur] + '</p>' +
+        i.opts.map((o, n) => '<button class="pri" data-gm="switch" data-k="' + n + '">🔁 Cambiar a ' + optTxt(o) + '</button>').join('') +
         '<button class="dk" data-gm="out">Cerrar sesión</button><button class="gh" data-gm="close">Cerrar menú</button></div>';
-    } else if (mode === 'pass') {
-      el.innerHTML = '<div class="gm"><h3>' + ICO[i.other] + ' Modo ' + LBL[i.other] + '</h3><p>Escribe tu contraseña (la misma de siempre) para continuar.</p><input type="password" id="gm-pass" autocomplete="current-password" placeholder="Tu contraseña">' + (err ? '<div class="er">' + esc(err) + '</div>' : '') +
+    } else if (mode === 'pass' && pick) {
+      el.innerHTML = '<div class="gm"><h3>' + (pick.kind ? ICO[pick.kind] + ' ' : '') + 'Cambiar a ' + optTxt(pick) + '</h3><p>Escribe tu contraseña (la misma de siempre) para continuar.</p><input type="password" id="gm-pass" autocomplete="current-password" placeholder="Tu contraseña">' + (err ? '<div class="er">' + esc(err) + '</div>' : '') +
         '<button class="pri" data-gm="go"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Un momento…' : 'Continuar') + '</button><button class="gh" data-gm="close">Cancelar</button></div>';
-    } else if (mode === 'choose') {
-      el.innerHTML = '<div class="gm"><h3>¿A dónde vas?</h3><p>Tienes dos perfiles con tu correo. Elige con cuál quieres trabajar ahora.</p><div class="gr">' +
-        ['rider', 'shop'].map((r) => '<button class="' + (r === i.cur ? 'pri' : '') + '" data-gm="' + (r === i.cur ? 'stay' : 'goto') + '"><span style="font-size:34px">' + ICO[r] + '</span>' + (r === 'rider' ? 'Repartidor' : 'Restaurante') + '</button>').join('') + '</div>' + (err ? '<div class="er">' + esc(err) + '</div>' : '') + '</div>';
-    }
+    } else if (mode === 'choose' && i) {
+      const all = [{ kind: i.cur, stay: true }].concat(chooseOpts);
+      el.innerHTML = '<div class="gm"><h3>¿A dónde vas?</h3><p>Tienes más de un perfil con tu correo. Elige con cuál quieres trabajar ahora.</p><div class="gr">' +
+        all.map((o, n) => '<button class="' + (o.stay ? 'pri' : '') + '" data-gm="' + (o.stay ? 'stay' : 'goto') + '" data-k="' + (n - 1) + '"><span style="font-size:34px">' + ICO[o.kind] + '</span>' + ({ rider: 'Repartidor', shop: 'Restaurante', cliente: 'Envíos personales' }[o.kind]) + '</button>').join('') + '</div>' + (err ? '<div class="er">' + esc(err) + '</div>' : '') + '</div>';
+    } else { mode = ''; }
     el.hidden = !mode;
     const inp = el.querySelector('#gm-pass'); if (inp && !busy) setTimeout(() => inp.focus(), 50);
   }
-  const gpw = () => (S.pwFor === S.email ? S.pw || '' : '');
-  function active() { return S.role === 'rider' && S.myOrders && S.myOrders.some((o) => o.driverId === S.uid && (o.estado === 'asignado' || o.estado === 'recogido')); }
+  const active = () => S.role === 'rider' && S.myOrders && S.myOrders.some((o) => o.driverId === S.uid && (o.estado === 'asignado' || o.estado === 'recogido'));
+  const sub = () => { try { return getAuth(initializeApp(FIREBASE_CONFIG, 'probe')); } catch (e) { return null; } };
+  async function exists(email, pass) {
+    const a2 = sub(); if (!a2) return false;
+    try { await signInWithEmailAndPassword(a2, email, pass); try { await signOut(a2); } catch (e) {} return true; } catch (e) { return false; }
+  }
   async function verifyPass(pass) {
-    let a2; try { a2 = getAuth(initializeApp(FIREBASE_CONFIG, 'probe')); } catch (e) { return true; }
+    const a2 = sub(); if (!a2) return true;
     try { await signInWithEmailAndPassword(a2, S.email, pass); try { await signOut(a2); } catch (e) {} return true; } catch (e) { return !(e && /invalid-credential|wrong-password|user-not-found/.test(e.code || '')); }
   }
-  async function go(pass) {
-    const i = info(); if (!i || busy) return;
+  async function go(pass, o) {
+    const i = info(); if (!i || busy || !o) return;
     if (active()) { err = 'Tienes un pedido activo. Termínalo antes de cambiar de modo.'; paint(); return; }
-    busy = true; err = ''; paint();
+    busy = true; err = ''; if (mode === 'pass') paint();
+    const fail = (m) => { err = m; busy = false; if (!mode) mode = 'pass'; pick = o; paint(); };
     try {
-      if (!gpw() || gpw() !== pass) { if (!(await verifyPass(pass))) { err = 'Contraseña incorrecta.'; busy = false; paint(); return; } }
+      if (!gpw() || gpw() !== pass) { if (!(await verifyPass(pass))) return fail('Contraseña incorrecta.'); }
       const carry = S.name; lsSet('gasca_online_' + S.uid, '0');
-      try { await signInWithEmailAndPassword(auth, i.target, pass); window.__carry = ''; }
+      try { await signInWithEmailAndPassword(auth, o.target, pass); window.__carry = ''; }
       catch (e) {
-        if (i.back) { err = 'No se pudo entrar a ese perfil. Revisa tu contraseña.'; busy = false; paint(); return; }
-        try { await createUserWithEmailAndPassword(auth, i.target, pass); window.__carry = carry || ''; }
-        catch (e2) { err = e2 && e2.code === 'auth/email-already-in-use' ? 'Ese perfil ya existe con otra contraseña. Entra con esa contraseña.' : authMsg(e2); busy = false; paint(); return; }
+        if (i.back) return fail('No se pudo entrar a ese perfil. Revisa tu contraseña.');
+        const bad = NO_MIX[o.kind];
+        if (bad && await exists(aliasOf(S.email, bad), pass)) return fail('Ya tienes un perfil de ' + LBL[bad] + '. No se puede combinar ' + LBL[o.kind] + ' con ' + LBL[bad] + '.');
+        try { await createUserWithEmailAndPassword(auth, o.target, pass); window.__carry = carry || ''; }
+        catch (e2) { return fail(e2 && e2.code === 'auth/email-already-in-use' ? 'Ese perfil ya existe con otra contraseña. Entra con esa contraseña.' : authMsg(e2)); }
       }
-      S.pw = pass; S.pwFor = i.target; busy = false; close();
-    } catch (e) { err = 'No se pudo cambiar. Intenta de nuevo.'; busy = false; paint(); }
+      S.pw = pass; S.pwFor = o.target; busy = false; close();
+    } catch (e) { fail('No se pudo cambiar. Intenta de nuevo.'); }
   }
+  function choose(o) { if (active()) { close(); toast('Tienes un pedido activo. Termínalo antes de cambiar de modo.'); return; } if (gpw()) { pick = o; mode = ''; go(gpw(), o); } else { pick = o; mode = 'pass'; err = ''; paint(); } }
   document.addEventListener('click', (e) => {
     const w = e.target.closest && e.target.closest('#who');
-    if (w) { e.stopImmediatePropagation(); e.preventDefault(); mode = 'menu'; err = ''; paint(); return; }
+    if (w && w.classList.contains('has-menu')) { e.stopImmediatePropagation(); e.preventDefault(); mode = 'menu'; err = ''; paint(); return; }
     const b = e.target.closest && e.target.closest('#gMenu [data-gm]');
     if (!b) { if (e.target === el) close(); return; }
-    const a = b.getAttribute('data-gm');
+    const a = b.getAttribute('data-gm'), i = info(), k = Number(b.getAttribute('data-k'));
     if (a === 'close' || a === 'stay') close();
     else if (a === 'out') { close(); doSignOut(); }
-    else if (a === 'switch' || a === 'goto') { if (active()) { err = ''; close(); toast('Tienes un pedido activo. Termínalo antes de cambiar de modo.'); } else if (gpw()) go(gpw()); else { mode = 'pass'; err = ''; paint(); } }
-    else if (a === 'go') { const v = (el.querySelector('#gm-pass') || {}).value || ''; if (v.length < 6) { err = 'Escribe tu contraseña.'; paint(); return; } go(v); }
+    else if (a === 'switch' && i && i.opts[k]) choose(i.opts[k]);
+    else if (a === 'goto' && chooseOpts[k]) choose(chooseOpts[k]);
+    else if (a === 'go') { const v = (el.querySelector('#gm-pass') || {}).value || ''; if (v.length < 6) { err = 'Escribe tu contraseña.'; paint(); return; } go(v, pick); }
   }, true);
-  el.addEventListener('keydown', (e) => { if (e.key === 'Enter' && mode === 'pass') { const v = (el.querySelector('#gm-pass') || {}).value || ''; if (v.length >= 6) go(v); } });
-  /* recordar la contraseña solo en memoria mientras dura la sesión */
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter' && mode === 'pass') { const v = (el.querySelector('#gm-pass') || {}).value || ''; if (v.length >= 6) go(v, pick); } });
   let pend = null;
   af.addEventListener('submit', () => {
     if (S.authMode !== 'login') return;
-    let em = $('#a-email').value.trim().toLowerCase(); const pw = $('#a-pass').value;
-    if (em.indexOf('@') > 0 && pw) pend = { email: em, pass: pw };
+    const em = $('#a-email').value.trim().toLowerCase(), pw = $('#a-pass').value;
+    const e2 = em.indexOf('@') > 0 ? em : telEmail(em);
+    if (e2 && pw) pend = { email: e2, pass: pw };
   }, true);
   async function probe(p) {
     const i = info(); if (!i || i.back) return;
-    let a2; try { a2 = getAuth(initializeApp(FIREBASE_CONFIG, 'probe')); } catch (e) { return; }
-    let found = false;
-    try { await signInWithEmailAndPassword(a2, i.target, p.pass); found = true; try { await signOut(a2); } catch (e) {} } catch (e) {}
-    if (found && S.user && S.email === p.email && !mode) { mode = 'choose'; err = ''; paint(); }
+    const res = await Promise.all(i.opts.map((o) => exists(o.target, p.pass)));
+    const found = i.opts.filter((o, n) => res[n]);
+    if (found.length && S.user && S.email === p.email && !mode) { chooseOpts = found; mode = 'choose'; err = ''; paint(); }
   }
   setInterval(() => {
+    const who = $('#who'); if (who) { const v = S.user ? view() : ''; who.classList.toggle('has-menu', v === 'shop' || v === 'rider'); }
     if (!S.user) { S.pw = ''; if (mode) close(); }
     if (pend && S.user && S.ready) {
       const v = view(); if (v === 'loading' || v === 'auth') return;
       const p = pend; pend = null;
-      if (S.email === p.email) { S.pw = p.pass; S.pwFor = p.email; if (!suffixRole(S.email)) probe(p); }
+      if (S.email === p.email) { S.pw = p.pass; S.pwFor = p.email; if (!suffixKind(S.email)) probe(p); }
     }
-    /* alta del segundo perfil: sin elegir quién eres */
     if (S.user && view() === 'profile') {
-      const sr = suffixRole(S.email);
-      if (sr) {
-        const rd = af.querySelector('input[name=role][value=' + sr + ']');
+      const sk = suffixKind(S.email);
+      if (sk) {
+        const rd = af.querySelector('input[name=role][value=' + sk + ']');
         if (rd && !rd.checked) { rd.checked = true; rd.dispatchEvent(new Event('change', { bubbles: true })); }
         const nm = $('#a-name'); if (nm && !nm.value && window.__carry) nm.value = window.__carry;
         $('#authRoles').hidden = true;
-        $('#authTitle').textContent = 'Alta de tu ' + LBL[sr];
-        $('#authLede').textContent = 'Usas el mismo correo y la misma contraseña. Llena los datos de tu ' + LBL[sr] + '; la administración los revisará antes de aprobarlo.';
+        $('#authTitle').textContent = 'Alta de tu perfil de ' + LBL[sk];
+        $('#authLede').textContent = 'Usas el mismo correo y la misma contraseña. Llena los datos; la administración los revisará antes de aprobarlo.';
       }
     }
   }, 400);
