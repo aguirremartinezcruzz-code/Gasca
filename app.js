@@ -2088,13 +2088,13 @@ function wzSync() {
   $('#wzBar').style.width = Math.round(((WZ.step + 1) / n) * 100) + '%';
   $('#wzN').textContent = 'Paso ' + (WZ.step + 1) + ' de ' + n;
   $('#wzTitle').innerHTML = (st.ic ? st.ic + ' ' : '') + esc(st.t); $('#wzHint').textContent = st.h;
-  $('#wzBack').hidden = false; $('#wzBack').textContent = WZ.step === 0 ? '← Mis pedidos' : 'Atrás'; $('#wzNext').hidden = !!st.last;
+  $('#wzBack').hidden = WZ.step === 0; $('#wzBack').textContent = 'Atrás'; $('#wzNext').hidden = !!st.last;
   const btn = $('#orderBtn'); if (!btn.disabled) btn.textContent = 'Generar pedido';
   if (WZ.dirty) {
     WZ.dirty = false;
     if (st.last) $('#wzSum').innerHTML = wzSumHtml(); else $('#wzSum').innerHTML = '';
     $('#wzFreq').innerHTML = wzFreqHtml();
-    $('#wzLast').innerHTML = wzLoad(wzLastKey()) ? '<button type="button" class="btn ghost block" id="wzRepeat">↻ Repetir mi último pedido</button>' : '';
+    $('#wzLast').innerHTML = '';
   }
 }
 let wzDoneT = null, wzOfSig = '';
