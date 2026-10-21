@@ -1117,7 +1117,7 @@ function tripCard(o) {
     (o.tel ? '<div class="line"><span class="k">Teléfono del cliente</span><span class="v">' + esc(o.tel) + '</span></div>' : '') +
     moneyRow(o) + payNote(o) + links + '<div class="actions">' + btn + '</div>' +
     (o.estado === 'recogido' ? '<button class="btn ghost small block" type="button" data-act="noans" data-id="' + esc(o.id) + '">📵 Ya llegué y no sale el cliente</button>' : '') +
-    (o.estado === 'recogido' && lsGet('gasca_naSent_' + o.id) ? '<button class="btn primary small block" type="button" data-act="libcode" data-id="' + esc(o.id) + '">🔑 Tengo un código de administración</button>' : '') +
+    (o.estado === 'recogido' ? '<button class="btn primary small block" type="button" data-act="libcode" data-id="' + esc(o.id) + '">🔑 Tengo un código de administración</button>' : '') +
     '<button class="btn ghost small block" type="button" data-act="issue" data-id="' + esc(o.id) + '">Tengo un problema</button></article>';
 }
 function renderRider() {
@@ -1734,6 +1734,7 @@ function askIssue(id) {
   document.body.appendChild(m);
   const draw = (sent) => {
     const keep = m.querySelector('textarea') ? m.querySelector('textarea').value : '';
+    const keepPh = m.querySelector('#issuePhone') ? m.querySelector('#issuePhone').value : '';
     if (sent) {
       const msg = 'Hola, soy ' + (S.name || 'repartidor') + ' de Gasca. Pedido ' + folio(id) + ': ' + INC_TIPOS[tipo] + '.' + (sent.nota ? ' ' + sent.nota : '');
       m.innerHTML = '<div class="box"><h3>Listo, avisamos a soporte</h3><p>Tu reporte quedó registrado. Para que te atiendan más rápido, escríbenos por WhatsApp.</p>' +
@@ -1746,7 +1747,8 @@ function askIssue(id) {
     m.innerHTML = '<div class="box"><h3>¿Qué pasó?</h3>' +
       (tipo === 'accidente' ? '<a class="btn sos" href="tel:911">Llamar al 911</a><p class="inc-note">Si hay heridos, llama primero. Después avísanos aquí.</p>' : '') +
       Object.keys(INC_TIPOS).map((k) => '<button type="button" class="opt' + (tipo === k ? ' on' : '') + '" data-k="' + k + '">' + esc(INC_TIPOS[k]) + '</button>').join('') +
-      '<textarea id="issueNote" maxlength="300" placeholder="Cuéntanos qué pasó (opcional)">' + esc(keep) + '</textarea>' +
+      '<textarea id="issueNote" maxlength="270" placeholder="Cuéntanos qué pasó (opcional)">' + esc(keep) + '</textarea>' +
+      '<label for="issuePhone" style="font-weight:700;font-size:14px">Tu WhatsApp para que soporte te contacte</label><input id="issuePhone" type="tel" inputmode="numeric" maxlength="14" autocomplete="tel" placeholder="10 dígitos" value="' + esc(keepPh || lsGet('gasca_myphone') || '') + '" style="width:100%;box-sizing:border-box;min-height:48px;margin:6px 0;padding:10px;border:2px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font-size:17px">' +
       '<div class="err inc-note" id="issueErr"></div>' +
       '<button class="btn primary" type="button" id="issueSend"' + (tipo ? '' : ' disabled') + '>Avisar a soporte</button>' +
       '<a class="btn ghost" target="_blank" rel="noopener" href="' + esc(supportUrl('Hola, soy ' + (S.name || 'repartidor') + ' de Gasca. Necesito ayuda con el pedido ' + folio(id) + '.')) + '">Hablar con soporte por WhatsApp</a>' +
@@ -1755,7 +1757,10 @@ function askIssue(id) {
     document.getElementById('issueClose').addEventListener('click', closeIssue);
     document.getElementById('issueSend').addEventListener('click', async () => {
       const btn = document.getElementById('issueSend'); btn.disabled = true;
-      const nota = document.getElementById('issueNote').value.trim().slice(0, 300), iid = newId();
+      const ph = document.getElementById('issuePhone').value.replace(/\D/g, '').slice(-10);
+      if (ph.length !== 10) { const er = document.getElementById('issueErr'); if (er) er.textContent = 'Escribe tu WhatsApp de 10 dígitos para que soporte te llame.'; btn.disabled = false; return; }
+      lsSet('gasca_myphone', ph);
+      const nota = (document.getElementById('issueNote').value.trim().slice(0, 270) + ' · Tel ' + ph).trim().slice(0, 300), iid = newId();
       try {
         await setDoc(doc(db, 'incidencias', iid), { id: iid, orderId: id, driverId: S.uid, driverName: S.name || 'Repartidor', shop: o.shop || '', folio: folio(id), tipo, nota, estado: 'abierta', creadoEn: Date.now() });
         lsSet('gasca_naSent_' + id, '1'); render();
@@ -1780,19 +1785,23 @@ function askNoAns(id) {
     if (done) { m.innerHTML = '<div class="box"><h3>Listo, avisamos a administración</h3><p>Administración va a llamar al cliente y al restaurante. Quédate cerca del domicilio. Cuando te den un <b>código de liberación</b>, toca <b>"Tengo un código de administración"</b> en tu pedido. Se te paga el envío.</p><button class="btn primary" type="button" id="naClose">Cerrar</button></div>'; document.getElementById('naClose').addEventListener('click', close); return; }
     const left = t0 ? t0 + wait - Date.now() : wait, ready = t0 && left <= 0;
     m.innerHTML = '<div class="box"><h3>📵 Ya llegué y no sale el cliente</h3>' +
-      (!t0 ? '<p>Antes de avisar, espera en el domicilio <b>' + Math.round(wait / 60000) + ' minutos</b> e intenta llamar o escribir por WhatsApp al cliente. Mantén tu GPS encendido.</p><button class="btn primary" type="button" id="naStart">Empezar a esperar</button>'
+      (!t0 ? '<p>Antes de avisar, espera en el domicilio <b>' + Math.round(wait / 60000) + ' minutos</b> e intenta llamar o escribir por WhatsApp al cliente. Mantén tu GPS encendido.</p><label for="naPhone" style="font-weight:700;font-size:14px">Tu WhatsApp para que soporte te contacte</label><input id="naPhone" type="tel" inputmode="numeric" maxlength="14" autocomplete="tel" placeholder="10 dígitos" value="' + esc(lsGet('gasca_myphone') || '') + '" style="width:100%;box-sizing:border-box;min-height:48px;margin:6px 0 10px;padding:10px;border:2px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font-size:17px"><button class="btn primary" type="button" id="naStart">Empezar a esperar</button>'
         : ready ? '<p>Ya esperaste el tiempo. Si nadie contestó, avisa a administración. Se guardará tu ubicación para revisar el caso.</p><button class="btn primary" type="button" id="naSend"' + (sending ? ' disabled' : '') + '>' + (sending ? 'Enviando…' : 'Avisar a administración') + '</button>'
         : '<p>Espera aquí e intenta contactar al cliente.</p><div style="font-size:44px;font-weight:800;text-align:center;margin:8px 0" id="naLeft">' + fmt(left) + '</div><p class="inc-note">El botón para avisar se activa cuando termine el tiempo.</p>') +
       '<div class="err inc-note" id="naErr"></div><button class="btn ghost" type="button" id="naClose">Cerrar</button></div>';
     document.getElementById('naClose').addEventListener('click', close);
-    const st = document.getElementById('naStart'); if (st) st.addEventListener('click', () => { t0 = Date.now(); lsSet(key, String(t0)); draw(); });
+    const st = document.getElementById('naStart'); if (st) st.addEventListener('click', () => {
+      const ph = (document.getElementById('naPhone').value || '').replace(/\D/g, '').slice(-10);
+      if (ph.length !== 10) { const er = document.getElementById('naErr'); if (er) er.textContent = 'Escribe tu WhatsApp de 10 dígitos.'; return; }
+      lsSet('gasca_myphone', ph); t0 = Date.now(); lsSet(key, String(t0)); draw();
+    });
     const sd = document.getElementById('naSend'); if (sd) sd.addEventListener('click', send);
   };
   async function send() {
     if (sending) return; sending = true; draw();
     let gps = 'sin GPS';
     try { const p = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000, maximumAge: 20000 })); gps = 'GPS ' + p.coords.latitude.toFixed(5) + ',' + p.coords.longitude.toFixed(5); } catch (e) {}
-    const nota = ('NO CONTESTAN · esperó ' + Math.round(wait / 60000) + ' min · ' + gps).slice(0, 200), iid = newId();
+    const nota = ('NO CONTESTAN · esperó ' + Math.round(wait / 60000) + ' min · ' + gps + ' · Tel ' + (lsGet('gasca_myphone') || '')).slice(0, 250), iid = newId();
     try {
       await setDoc(doc(db, 'incidencias', iid), { id: iid, orderId: id, driverId: S.uid, driverName: S.name || 'Repartidor', shop: o.shop || '', folio: folio(id), tipo: 'otro', nota, estado: 'abierta', creadoEn: Date.now() });
       lsSet(key, ''); lsSet('gasca_naSent_' + id, '1'); sending = false; clearInterval(timer); draw(true); render();
@@ -1860,6 +1869,7 @@ function renderIncid(el) {
     return '<article class="order"><div class="head"><span class="folio">' + esc(x.driverName || 'Repartidor') + '</span><span class="chip ' + (open ? 'abierto' : 'entregado') + '">' + (open ? 'Sin atender' : 'Atendida') + '</span><span class="ago">' + ago(x.creadoEn) + '</span></div>' +
       '<div class="line"><span class="k">Problema</span><span class="v"><b>' + (NOANS_RE.test(x.nota || '') ? '📵 Nadie contesta en la entrega' : esc(INC_TIPOS[x.tipo] || x.tipo)) + '</b></span></div>' +
       (x.nota ? '<div class="line"><span class="k">Nota</span><span class="v">' + esc(x.nota) + noansMap(x.nota) + '</span></div>' : '') +
+      (() => { const mt = /Tel (\d{10})/.exec(x.nota || ''); return mt ? '<div class="links"><a href="' + esc(waUrl(mt[1])) + '" target="_blank" rel="noopener">💬 WhatsApp al repartidor</a><a href="tel:' + mt[1] + '">📞 Llamar ' + mt[1] + '</a></div>' : '<div class="line"><span class="k">Contacto</span><span class="v"><small>Este aviso no trae teléfono. Los nuevos avisos sí lo traen.</small></span></div>'; })() +
       '<div class="line"><span class="k">Pedido</span><span class="v">' + esc(x.folio || '') + ' · ' + esc(x.shop || '') + (o ? ' · ' + esc(LABEL[o.estado] || o.estado) + ' · ' + esc(o.dest) : '') + '</span></div>' +
       (S.libs && S.libs[x.orderId] && o && o.estado === 'recogido' ? '<div class="paynote">Código de liberación: <b style="font-size:26px;letter-spacing:4px">' + esc(S.libs[x.orderId]) + '</b><br><small>Díctaselo al repartidor después de hablar con el cliente y el restaurante.</small></div>' : '') +
       (o && o.liberado ? '<div class="line"><span class="k">Resultado</span><span class="v"><b>🔑 Liberado por administración</b></span></div>' : '') +
