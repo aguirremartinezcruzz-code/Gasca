@@ -404,7 +404,7 @@ function syncRole() {
 function mergeOrders() {
   if (S.role === 'rider') {
     const m = new Map();
-    S.openOrders.filter(liveR).forEach((o) => m.set(o.id, o));
+    S.openOrders.filter(liveR).filter(inMyZone).forEach((o) => m.set(o.id, o));
     S.myOrders.forEach((o) => m.set(o.id, o));
     S.orders = Array.from(m.values());
   } else { S.orders = S.myOrders; }
@@ -423,6 +423,7 @@ function startRole() {
     listen(roleUnsubs, query(collection(db, 'movs'), where('driverId', '==', S.uid)), (snap) => { S.movs = snap.docs.map((d) => d.data()); render(); });
     listen(roleUnsubs, query(collection(db, 'recargas'), where('driverId', '==', S.uid)), (snap) => { S.recargas = snap.docs.map((d) => d.data()).filter((r) => r && r.id && r.estado); render(); });
     listen(roleUnsubs, doc(db, 'config', 'pago'), (s) => { S.pago = (s.exists() && s.data().texto) || ''; render(); });
+    listen(roleUnsubs, doc(db, 'config', 'zonas'), (s) => { S.zonas = (s.exists() && Array.isArray(s.data().zonas)) ? s.data().zonas : []; mergeOrders(); syncSheet(); render(); });
     listen(roleUnsubs, query(collection(db, 'ofertas'), where('driverId', '==', S.uid)), onOfertas);
   } else {
     listen(roleUnsubs, query(collection(db, 'ofertas'), where('shopId', '==', S.uid)), onOfertas);
@@ -596,7 +597,7 @@ function onOpenOrders(snap) {
   if (S.online && fresh.length) {
     fresh.sort((a, b) => b.creadoEn - a.creadoEn);
     let pushed = 0;
-    fresh.forEach((o) => { if (!S.ignored.has(o.id) && canTake(o) && S.queue.indexOf(o.id) < 0) { S.queue.unshift(o.id); pushed++; } });
+    fresh.forEach((o) => { if (!S.ignored.has(o.id) && inMyZone(o) && canTake(o) && S.queue.indexOf(o.id) < 0) { S.queue.unshift(o.id); pushed++; } });
     if (pushed) { beep(); buzz(); }
   }
   syncSheet(); render();
@@ -626,6 +627,7 @@ function startAdmin() {
   listen(unsubs, query(collection(db, 'movs'), orderBy('creadoEn', 'desc'), limit(1000)), (snap) => { S.movs = snap.docs.map((d) => d.data()); render(); });
   listen(unsubs, query(collection(db, 'presence'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = d.data(); }); S.presence = m; render(); });
   listen(unsubs, doc(db, 'config', 'pago'), (s) => { S.pago = (s.exists() && s.data().texto) || ''; render(); });
+  listen(unsubs, doc(db, 'config', 'zonas'), (s) => { S.zonas = (s.exists() && Array.isArray(s.data().zonas)) ? s.data().zonas : []; render(); });
   listen(unsubs, query(collection(db, 'incidencias'), orderBy('creadoEn', 'desc'), limit(200)), (snap) => {
     const arr = snap.docs.map((d) => d.data()).filter((x) => x && x.id && x.tipo);
     if (S.incReady) arr.forEach((x) => { if (x.estado === 'abierta' && !S.incMine.has(x.id)) { beep([880, 660, 880]); buzz(); toast('Incidencia de ' + (x.driverName || 'un repartidor') + ': ' + (INC_TIPOS[x.tipo] || x.tipo)); } });
@@ -1088,7 +1090,7 @@ function acceptBtn(o, busy) {
 }
 function availCard(o) {
   return '<article class="order">' + head(o) +
-    '<div class="line"><span class="k">Recoger en</span><span class="v">' + esc(o.shop) + ' · ' + esc(o.pickup) + '</span></div>' +
+    '<div class="line"><span class="k">Recoger en</span><span class="v">' + esc(o.shop) + ' · ' + esc(o.pickup) + zoneTag(o) + '</span></div>' +
     '<div class="line"><span class="k">Entregar en</span><span class="v">' + esc(o.dest) + '</span></div>' +
     '<div class="line"><span class="k">Lleva</span><span class="v">' + esc(pdesc(o).t) + '</span></div>' +
     moneyRow(o) + payNote(o) +
@@ -2247,4 +2249,95 @@ function delivNotice(o) {
   }
   setInterval(lgSync, 250);
   setInterval(sync, 250);
+})();
+
+/* ---------- zonas de trabajo (por colonia) ---------- */
+const nrm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+function zoneOf(o) {
+  const z = S.zonas || [], txt = nrm((o && o.pickup) || '');
+  let best = null, len = 0;
+  z.forEach((zn) => (zn.colonias || []).forEach((c) => { const k = nrm(c); if (k && k.length > len && txt.indexOf(k) >= 0) { best = zn; len = k.length; } }));
+  return best;
+}
+const zonesKey = () => 'gasca_zonas_' + S.uid;
+function myZones() { try { const a = JSON.parse(lsGet(zonesKey()) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function inMyZone(o) {
+  if (!S.zonas || !S.zonas.length) return true;
+  const mine = myZones().filter((id) => S.zonas.some((z) => z.id === id));
+  if (!mine.length) return true;
+  const z = zoneOf(o);
+  return !z || mine.indexOf(z.id) >= 0;
+}
+function zoneTag(o) { const z = zoneOf(o); return z ? '<br><small>📍 ' + esc(z.nombre) + '</small>' : ''; }
+
+/* barra "Mi zona" del repartidor */
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '#zoneBar{margin:10px 0 4px}#zoneBar .zl{display:block;font-weight:800;margin:0 0 6px}#zoneBar .zc{display:flex;flex-wrap:wrap;gap:8px}#zoneBar button{border:2px solid var(--line,#cfd6de);background:#fff;border-radius:99px;padding:8px 14px;font-weight:700;min-height:42px;font:inherit;font-weight:700;color:inherit}#zoneBar button.on{background:#f6b400;border-color:#f6b400;color:#16202a}' +
+    '#zonasEd .zn{background:#fff;border:2px solid var(--line,#d5dbe3);border-radius:16px;padding:12px;margin-bottom:12px}#zonasEd textarea{min-height:90px}#zonasEd .btn{margin-top:6px}#zonasEd .zs{font-size:14px;opacity:.75;margin:4px 0}';
+  document.head.appendChild(st);
+  let sig = '';
+  function bar() {
+    let el = document.getElementById('zoneBar');
+    const head = document.getElementById('riderHead');
+    const show = head && view() === 'rider' && S.tab === 'disp' && S.zonas && S.zonas.length;
+    if (!el && head) { el = document.createElement('div'); el.id = 'zoneBar'; head.after(el); }
+    if (!el) return;
+    el.hidden = !show; if (!show) return;
+    const mine = myZones().filter((id) => S.zonas.some((z) => z.id === id));
+    const s2 = mine.join(',') + '|' + S.zonas.map((z) => z.id + z.nombre).join(',');
+    if (s2 === sig && el.innerHTML) return; sig = s2;
+    el.innerHTML = '<span class="zl">📍 ¿Dónde trabajas hoy?</span><div class="zc"><button type="button" data-zone="*" class="' + (mine.length ? '' : 'on') + '">Todas</button>' +
+      S.zonas.map((z) => '<button type="button" data-zone="' + esc(z.id) + '" class="' + (mine.indexOf(z.id) >= 0 ? 'on' : '') + '">' + esc(z.nombre) + '</button>').join('') + '</div>';
+  }
+  setInterval(bar, 400);
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('[data-zone]'); if (!b) return;
+    const id = b.getAttribute('data-zone');
+    let mine = myZones().filter((x) => S.zonas.some((z) => z.id === x));
+    if (id === '*') mine = []; else if (mine.indexOf(id) >= 0) mine = mine.filter((x) => x !== id); else mine.push(id);
+    lsSet(zonesKey(), JSON.stringify(mine)); sig = '';
+    mergeOrders(); S.queue = S.queue.filter((qid) => { const o = byId(qid); return o && inMyZone(o); }); syncSheet(); render(); bar();
+  });
+})();
+
+/* editor de zonas del dueño (en Ajustes) */
+(function () {
+  const host = document.getElementById('adminAjustes'); if (!host) return;
+  const ed = document.createElement('div'); ed.id = 'zonasEd';
+  host.appendChild(ed);
+  let draft = null, dirty = false, lastSrc = '';
+  const src = () => JSON.stringify(S.zonas || []);
+  function html() {
+    const unk = []; (S.orders || []).forEach((o) => { if (o.pickup && !zoneOf(o) && unk.indexOf(o.pickup) < 0) unk.push(o.pickup); });
+    return '<h2 class="section" style="margin-top:28px">Zonas de trabajo</h2><p class="hint">Cada zona tiene un nombre y las colonias que cubre (sepáralas con comas). El repartidor elige en qué zona trabaja y solo le salen pedidos de esas zonas. Si una colonia no está en ninguna zona, el pedido le sale a todos.</p>' +
+      draft.map((z, i) => '<div class="zn"><div class="field"><label>Nombre de la zona</label><input type="text" maxlength="40" data-zi="' + i + '" data-zf="n" value="' + esc(z.nombre) + '" placeholder="Ej. Vistas de la Cantera"></div><div class="field"><label>Colonias que cubre</label><textarea data-zi="' + i + '" data-zf="c" maxlength="800" placeholder="Ej. Vistas de la Cantera, La Cantera, Fraccionamiento Los Sauces">' + esc((z.colonias || []).join(', ')) + '</textarea></div><button class="btn ghost small" type="button" data-zact="del" data-zi="' + i + '">Quitar zona</button></div>').join('') +
+      '<button class="btn ghost block" type="button" data-zact="add">＋ Agregar zona</button><button class="btn primary block" type="button" data-zact="save" style="margin-top:10px">Guardar zonas</button>' +
+      (unk.length ? '<p class="zs"><b>Recogidas recientes sin zona:</b><br>' + unk.slice(0, 8).map(esc).join('<br>') + '</p>' : '');
+  }
+  function sync() {
+    if (view() !== 'admin' || S.tab !== 'ajustes') { ed.hidden = true; return; }
+    ed.hidden = false;
+    if (!draft || (!dirty && lastSrc !== src())) { draft = JSON.parse(src()); lastSrc = src(); dirty = false; if (!draft.length) draft = []; }
+    if (ed.contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+    const h = html(); if (ed.dataset.h !== h) { ed.innerHTML = h; ed.dataset.h = h; }
+  }
+  setInterval(sync, 400);
+  ed.addEventListener('input', (e) => {
+    const t = e.target, i = Number(t.getAttribute('data-zi')); if (!draft || isNaN(i) || !draft[i]) return;
+    dirty = true;
+    if (t.getAttribute('data-zf') === 'n') draft[i].nombre = t.value; else draft[i].colonias = t.value.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+  });
+  ed.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-zact]'); if (!b) return;
+    const a = b.getAttribute('data-zact');
+    if (a === 'add') { draft.push({ id: 'z' + Date.now().toString(36), nombre: '', colonias: [] }); dirty = true; ed.dataset.h = ''; sync(); }
+    else if (a === 'del') { draft.splice(Number(b.getAttribute('data-zi')), 1); dirty = true; ed.dataset.h = ''; sync(); }
+    else if (a === 'save') {
+      const out = draft.map((z) => ({ id: z.id, nombre: String(z.nombre || '').trim().slice(0, 40), colonias: (z.colonias || []).map((c) => String(c).trim().slice(0, 60)).filter(Boolean).slice(0, 80) })).filter((z) => z.nombre);
+      if (out.some((z) => !z.colonias.length)) { toast('Cada zona necesita al menos una colonia.'); return; }
+      try { await setDoc(doc(db, 'config', 'zonas'), { zonas: out, actualizado: Date.now() }); dirty = false; draft = null; lastSrc = ''; ed.dataset.h = ''; toast('Zonas guardadas.'); }
+      catch (er) { toast('No se pudo guardar. Intenta de nuevo.'); }
+    }
+  });
 })();
