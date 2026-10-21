@@ -530,6 +530,7 @@ async function reOffer(id) {
     await b.commit();
     delete S_reVal[id]; S.tab = 'pedidos';
     toast('Pedido enviado otra vez con ' + pesos(m) + '.');
+    try { wzDone(nid); } catch (e2) {}
   } catch (e) { toast('No se pudo enviar. Intenta de nuevo.'); }
   S.busy.delete('re' + id); render();
 }
@@ -2066,17 +2067,34 @@ function wzSync() {
     $('#wzLast').innerHTML = wzLoad(wzLastKey()) ? '<button type="button" class="btn ghost block" id="wzRepeat">↻ Repetir mi último pedido</button>' : '';
   }
 }
+let wzDoneT = null;
 function wzDone(id) {
   if (wzOff()) return;
   WZ.step = 0; WZ.dirty = true;
+  const old = document.getElementById('wzDone'); if (old) old.remove();
+  clearInterval(wzDoneT);
+  const t0 = Date.now(), pers = (() => { const o = byId(id); return o ? isP(o) : isCli(S.profile); })();
   const d = document.createElement('div'); d.id = 'wzDone';
-  d.innerHTML = '<div class="radar on" aria-hidden="true"><div class="rings"><i></i><i></i><i></i><span class="sweep"></span><span class="core">🛵</span></div></div><h2>¡Pedido enviado!</h2><p class="hint">Pedido ' + esc(folio(id)) + ' · buscando repartidor…</p>' +
-    '<button type="button" class="btn primary" data-wzd="ver">Ver mi pedido</button><button type="button" class="btn ghost" data-wzd="otro">Hacer otro pedido</button>';
+  d.innerHTML = '<div class="radar on" aria-hidden="true"><div class="rings"><i></i><i></i><i></i><span class="sweep"></span><span class="core">🛵</span></div></div><h2 id="wzDoneT">Buscando repartidor…</h2><p class="hint" id="wzDoneS">Pedido ' + esc(folio(id)) + '</p>' +
+    (pers ? '<p class="paynote" id="wzDoneC" style="margin:0">Tiempo para que alguien la tome: <b id="wzCd">…</b> s</p>' : '') +
+    '<button type="button" class="btn primary" data-wzd="ver">Ver mi pedido</button>';
   document.body.appendChild(d);
-  d.addEventListener('click', (e) => {
-    const b = e.target.closest && e.target.closest('[data-wzd]'); if (!b) return;
-    S.tab = b.getAttribute('data-wzd') === 'otro' ? 'nuevo' : 'pedidos'; d.remove(); render();
-  });
+  const close = (toast2, tab) => { clearInterval(wzDoneT); wzDoneT = null; d.remove(); S.tab = tab || 'pedidos'; if (toast2) toast(toast2); render(); };
+  d.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-wzd]')) close(); });
+  wzDoneT = setInterval(() => {
+    const o = byId(id);
+    if (!o) { if (Date.now() - t0 > 6000) close(); return; }
+    if (o.estado === 'asignado' || o.estado === 'recogido' || o.estado === 'entregado') {
+      clearInterval(wzDoneT); beep([660, 990]);
+      $('#wzDoneT').textContent = '¡' + (o.driverName || 'Un repartidor') + ' tomó tu pedido!'; $('#wzDoneS').textContent = 'Ya va por él.';
+      const c = $('#wzDoneC'); if (c) c.remove();
+      setTimeout(() => { if (document.getElementById('wzDone') === d) close(); }, 2500); return;
+    }
+    if (o.estado === 'cancelado') { close(); return; }
+    if (S.ofertas.some((x) => x.orderId === id && x.estado === 'pendiente')) { try { beep([784, 988]); } catch (e) {} close('Un repartidor te hizo una contraoferta. Revísala.'); return; }
+    if (isExpired(o)) { try { beep([440, 330]); } catch (e) {} close(); return; }
+    const c = $('#wzCd'); if (c) c.textContent = Math.max(0, Math.ceil((deadline(o) - Date.now()) / 1000));
+  }, 400);
 }
 setInterval(wzSync, 400);
 
