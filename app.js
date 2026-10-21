@@ -595,6 +595,7 @@ function onOpenOrders(snap) {
     if (!S.known.has(o.id)) { S.known.add(o.id); if (S.openReady && Date.now() - (o.creadoEn || 0) < 120000) fresh.push(o); }
   });
   S.openReady = true; S.openOrders = open; mergeOrders();
+  if (S.online) fresh.forEach((o) => { try { distFor(o); } catch (e) {} });
   if (S.online && fresh.length) {
     fresh.sort((a, b) => b.creadoEn - a.creadoEn);
     let pushed = 0;
@@ -925,7 +926,7 @@ function renderSheet(force) {
     '<div class="money"><div class="fare">' + pesos(o.tarifa) + '<small>por el envío</small></div>' +
     '<div class="cash">' + (Number(o.cobro) > 0 ? 'Cobrar <b>' + pesos(o.cobro) + '</b>' : 'Sin cobro') + '</div></div>' +
     '<div class="line"><span class="k">Recoger en</span><span class="v">' + esc(o.shop) + ' · ' + esc(o.pickup) + '</span></div>' +
-    '<div class="line"><span class="k">Entregar en</span><span class="v">' + esc(o.dest) + '</span></div>' + payNote(o) +
+    '<div class="line"><span class="k">Entregar en</span><span class="v">' + esc(o.dest) + '</span></div>' + distLine(o) + payNote(o) +
     offerBtns(o) + '<div class="actions"><button class="btn ghost" type="button" data-act="ignore" data-id="' + esc(o.id) + '">Ignorar</button>' +
     '<button class="btn primary" type="button" data-act="accept" data-id="' + esc(o.id) + '"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Aceptando…' : 'Aceptar') + '</button></div></div>';
 }
@@ -1093,7 +1094,7 @@ function acceptBtn(o, busy) {
 function availCard(o) {
   return '<article class="order">' + head(o) +
     '<div class="line"><span class="k">Recoger en</span><span class="v">' + esc(o.shop) + ' · ' + esc(o.pickup) + zoneTag(o) + '</span></div>' +
-    '<div class="line"><span class="k">Entregar en</span><span class="v">' + esc(o.dest) + '</span></div>' +
+    '<div class="line"><span class="k">Entregar en</span><span class="v">' + esc(o.dest) + '</span></div>' + distLine(o) +
     '<div class="line"><span class="k">Lleva</span><span class="v">' + esc(pdesc(o).t) + '</span></div>' +
     moneyRow(o) + payNote(o) +
     '<p class="hint">Comisión de ' + cents(comC(o)) + ' (13%) al entregar.</p>' +
@@ -2399,4 +2400,65 @@ async function switchRole() {
     toast('Listo. Ahora envía tus documentos.');
   } catch (e) { toast('No se pudo cambiar el perfil. Intenta de nuevo.'); }
   S.busy.delete('swr'); render();
+}
+
+/* ---------- distancia aproximada del pedido (OpenStreetMap) ---------- */
+const GEO = { cache: null, q: [], busy: false, last: 0, pend: new Set() };
+function geoLoad() { if (!GEO.cache) { try { GEO.cache = JSON.parse(lsGet('gasca_geo') || '{}') || {}; } catch (e) { GEO.cache = {}; } } return GEO.cache; }
+function geoSave() { try { const k = Object.keys(GEO.cache); if (k.length > 300) k.slice(0, 100).forEach((x) => delete GEO.cache[x]); lsSet('gasca_geo', JSON.stringify(GEO.cache)); } catch (e) {} }
+function geoQueries(txt) {
+  const t = String(txt || '').replace(/\s*[—-]\s*Ref:.*$/i, '').replace(/\bInt\.?\s*\S+/ig, '').replace(/\bCol\.?\s+/ig, '').replace(/\s+/g, ' ').trim();
+  const parts = t.split(',').map((x) => x.trim()).filter(Boolean), tail = /nayarit/i.test(t) ? '' : ', Nayarit, México';
+  const out = [parts.join(', ') + tail, parts.map((p) => p.replace(/\b\d+\w*\b/g, '').trim()).filter(Boolean).join(', ') + tail];
+  if (parts.length > 2) out.push(parts.slice(1).join(', ') + tail);
+  return out.filter((x, i) => x.length > 8 && out.indexOf(x) === i);
+}
+async function geoFetch(q) {
+  const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 9000);
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=mx&viewbox=-105.8,23.1,-103.7,20.6&bounded=0&accept-language=es&q=' + encodeURIComponent(q), { signal: ctl.signal });
+    if (!r.ok) throw new Error('http');
+    const j = await r.json();
+    return j && j[0] ? [Number(j[0].lat), Number(j[0].lon)] : null;
+  } finally { clearTimeout(tm); }
+}
+async function geoPump() {
+  if (GEO.busy) return; GEO.busy = true;
+  while (GEO.q.length) {
+    const it = GEO.q.shift(), c = geoLoad();
+    if (it.key in c) { it.res(c[it.key]); continue; }
+    let pt = null, failed = false;
+    for (const q of it.qs) {
+      const wait = GEO.last + 1150 - Date.now(); if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      try { GEO.last = Date.now(); pt = await geoFetch(q); } catch (e) { failed = true; break; }
+      if (pt) break;
+    }
+    if (!failed) { c[it.key] = pt || 0; geoSave(); }
+    it.res(failed ? null : pt);
+  }
+  GEO.busy = false;
+}
+const geoPoint = (txt) => new Promise((res) => { const qs = geoQueries(txt), key = nrm(txt); if (!qs.length) { res(null); return; } GEO.q.push({ key, qs, res }); geoPump(); });
+function hav(a, b) { const R = 6371, d = Math.PI / 180, dl = (b[0] - a[0]) * d, dn = (b[1] - a[1]) * d, x = Math.sin(dl / 2) ** 2 + Math.cos(a[0] * d) * Math.cos(b[0] * d) * Math.sin(dn / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); }
+function distFor(o) {
+  if (!o || !o.id) return null;
+  S.dist = S.dist || {};
+  const d = S.dist[o.id];
+  if (d !== undefined) return d;
+  if (GEO.pend.has(o.id)) return undefined;
+  GEO.pend.add(o.id);
+  Promise.all([geoPoint(o.pickup), geoPoint(o.dest)]).then(([a, b]) => {
+    let km = null;
+    if (a && b) { km = hav(a, b) * 1.3; if (km > 60) km = null; }
+    S.dist[o.id] = km; GEO.pend.delete(o.id);
+    if (S.sheetId === o.id) renderSheet(true);
+    render();
+  });
+  return undefined;
+}
+function distLine(o) {
+  const d = distFor(o);
+  if (d === null) return '';
+  const txt = d === undefined ? '<small>calculando…</small>' : '<b>≈ ' + (d < 1 ? (Math.max(1, Math.round(d * 10)) * 100) + ' m' : (Math.round(d * 10) / 10).toString().replace('.0', '') + ' km') + '</b> <small>aprox. · © OpenStreetMap</small>';
+  return '<div class="line"><span class="k">Recorrido</span><span class="v">' + txt + '</span></div>';
 }
