@@ -1879,7 +1879,7 @@ function cliSum() {
 (function () {
   const st = document.createElement('style');
   st.textContent = '.top{flex-wrap:wrap;row-gap:10px}.who{order:3;flex:1 1 100%;max-width:100%!important;display:flex;align-items:center;gap:9px;text-align:left;white-space:normal!important;padding:8px 14px!important;border-radius:14px!important;font-size:14px;line-height:1.25}' +
-    '.who::before{content:"";flex:0 0 9px;height:9px;border-radius:50%;background:var(--green,#17803F)}.who::after{content:"Salir";margin-left:auto;padding-left:10px;font-size:13px;font-weight:700;color:var(--muted);text-decoration:underline}';
+    '.who::before{content:"";flex:0 0 9px;height:9px;border-radius:50%;background:var(--green,#17803F)}.who::after{content:"☰ Menú";margin-left:auto;padding-left:10px;font-size:13px;font-weight:700;color:var(--muted);text-decoration:underline}';
   document.head.appendChild(st);
 })();
 
@@ -2590,4 +2590,113 @@ function tarFor(km) {
     el.innerHTML = '<p class="ms' + bad + '">' + esc(msg) + '</p><p class="ms" style="font-weight:500;font-size:12.5px">Tu ubicación se usa solo para mostrarte pedidos cercanos y verificar entregas, solo mientras estás en línea. Consulta el Aviso de privacidad.</p>';
   }
   setInterval(bar, 400);
+})();
+
+
+/* ---------- menú y dos perfiles (repartidor y restaurante) con el mismo correo ---------- */
+(function () {
+  const SUF = { shop: '+gasca-negocio', rider: '+gasca-repartidor' };
+  const LBL = { shop: 'restaurante', rider: 'repartidor' };
+  const ICO = { shop: '🍽️', rider: '🛵' };
+  const parts = (e) => { e = String(e || '').toLowerCase(); const i = e.lastIndexOf('@'); return i < 1 ? null : { l: e.slice(0, i), d: e.slice(i + 1) }; };
+  const suffixRole = (e) => { const p = parts(e); if (!p) return ''; return p.l.endsWith(SUF.shop) ? 'shop' : p.l.endsWith(SUF.rider) ? 'rider' : ''; };
+  const baseOf = (e) => { const p = parts(e); return p ? p.l.replace(/\+gasca-(negocio|repartidor)$/, '') + '@' + p.d : ''; };
+  const aliasOf = (e, r) => { const p = parts(baseOf(e)); return p.l + SUF[r] + '@' + p.d; };
+  function info() {
+    if (!S.user || S.isAdmin || S.ownerEmail || telOf(S.email) || isCli(S.profile)) return null;
+    const sr = suffixRole(S.email);
+    if (sr) return { cur: sr, other: sr === 'shop' ? 'rider' : 'shop', target: baseOf(S.email), back: true };
+    if (S.role !== 'rider' && S.role !== 'shop') return null;
+    const other = S.role === 'shop' ? 'rider' : 'shop';
+    return { cur: S.role, other, target: aliasOf(S.email, other), back: false };
+  }
+  const st = document.createElement('style');
+  st.textContent = '#gMenu{position:fixed;inset:0;z-index:9000;background:rgba(15,20,28,.55);display:flex;align-items:flex-end;justify-content:center}#gMenu[hidden]{display:none}#gMenu .gm{width:100%;max-width:480px;background:#fff;color:#16202a;border-radius:22px 22px 0 0;padding:20px 18px 26px;box-shadow:0 -10px 40px rgba(0,0,0,.25)}#gMenu h3{margin:0 0 4px;font-size:20px}#gMenu p{margin:4px 0 12px;font-size:14.5px;opacity:.8}#gMenu button{display:block;width:100%;min-height:54px;margin-top:10px;border-radius:16px;border:2px solid #16202a;background:#fff;color:#16202a;font:inherit;font-weight:800;font-size:16.5px;padding:10px 14px}#gMenu button.pri{background:#f6b400;border-color:#f6b400}#gMenu button.dk{background:#16202a;color:#fff}#gMenu button.gh{border-color:#cfd6de;font-weight:700}#gMenu input{width:100%;min-height:50px;border:2px solid #cfd6de;border-radius:14px;padding:8px 12px;font:inherit;font-size:17px;margin-top:8px}#gMenu .er{color:#b3261e;font-weight:700;margin:8px 0 0;font-size:14px}#gMenu .gr{display:grid;grid-template-columns:1fr 1fr;gap:10px}#gMenu .gr button{min-height:110px;font-size:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}#gMenu .gr small{font-weight:600;opacity:.75;font-size:13px}';
+  document.head.appendChild(st);
+  const el = document.createElement('div'); el.id = 'gMenu'; el.hidden = true; document.body.appendChild(el);
+  let mode = '', err = '', busy = false;
+  const close = () => { el.hidden = true; mode = ''; err = ''; };
+  function paint() {
+    const i = info();
+    if (mode === 'menu') {
+      el.innerHTML = '<div class="gm"><h3>☰ Menú</h3><p>' + esc(S.name || '') + (i ? ' · modo ' + LBL[i.cur] : '') + '</p>' +
+        (i ? '<button class="pri" data-gm="switch">🔁 Cambiar a modo ' + LBL[i.other] + '</button>' : '') +
+        '<button class="dk" data-gm="out">Cerrar sesión</button><button class="gh" data-gm="close">Cerrar menú</button></div>';
+    } else if (mode === 'pass') {
+      el.innerHTML = '<div class="gm"><h3>' + ICO[i.other] + ' Modo ' + LBL[i.other] + '</h3><p>Escribe tu contraseña (la misma de siempre) para continuar.</p><input type="password" id="gm-pass" autocomplete="current-password" placeholder="Tu contraseña">' + (err ? '<div class="er">' + esc(err) + '</div>' : '') +
+        '<button class="pri" data-gm="go"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Un momento…' : 'Continuar') + '</button><button class="gh" data-gm="close">Cancelar</button></div>';
+    } else if (mode === 'choose') {
+      el.innerHTML = '<div class="gm"><h3>¿A dónde vas?</h3><p>Tienes dos perfiles con tu correo. Elige con cuál quieres trabajar ahora.</p><div class="gr">' +
+        ['rider', 'shop'].map((r) => '<button class="' + (r === i.cur ? 'pri' : '') + '" data-gm="' + (r === i.cur ? 'stay' : 'goto') + '"><span style="font-size:34px">' + ICO[r] + '</span>' + (r === 'rider' ? 'Repartidor' : 'Restaurante') + '</button>').join('') + '</div>' + (err ? '<div class="er">' + esc(err) + '</div>' : '') + '</div>';
+    }
+    el.hidden = !mode;
+    const inp = el.querySelector('#gm-pass'); if (inp && !busy) setTimeout(() => inp.focus(), 50);
+  }
+  function active() { return S.role === 'rider' && S.myOrders && S.myOrders.some((o) => o.driverId === S.uid && (o.estado === 'asignado' || o.estado === 'recogido')); }
+  async function verifyPass(pass) {
+    let a2; try { a2 = getAuth(initializeApp(FIREBASE_CONFIG, 'probe')); } catch (e) { return true; }
+    try { await signInWithEmailAndPassword(a2, S.email, pass); try { await signOut(a2); } catch (e) {} return true; } catch (e) { return !(e && /invalid-credential|wrong-password|user-not-found/.test(e.code || '')); }
+  }
+  async function go(pass) {
+    const i = info(); if (!i || busy) return;
+    if (active()) { err = 'Tienes un pedido activo. Termínalo antes de cambiar de modo.'; paint(); return; }
+    busy = true; err = ''; paint();
+    try {
+      if (!S.pw || S.pw !== pass) { if (!(await verifyPass(pass))) { err = 'Contraseña incorrecta.'; busy = false; paint(); return; } }
+      const carry = S.name; lsSet('gasca_online_' + S.uid, '0');
+      try { await signInWithEmailAndPassword(auth, i.target, pass); window.__carry = ''; }
+      catch (e) {
+        if (i.back) { err = 'No se pudo entrar a ese perfil. Revisa tu contraseña.'; busy = false; paint(); return; }
+        try { await createUserWithEmailAndPassword(auth, i.target, pass); window.__carry = carry || ''; }
+        catch (e2) { err = e2 && e2.code === 'auth/email-already-in-use' ? 'Ese perfil ya existe con otra contraseña. Entra con esa contraseña.' : authMsg(e2); busy = false; paint(); return; }
+      }
+      S.pw = pass; busy = false; close();
+    } catch (e) { err = 'No se pudo cambiar. Intenta de nuevo.'; busy = false; paint(); }
+  }
+  document.addEventListener('click', (e) => {
+    const w = e.target.closest && e.target.closest('#who');
+    if (w) { e.stopImmediatePropagation(); e.preventDefault(); mode = 'menu'; err = ''; paint(); return; }
+    const b = e.target.closest && e.target.closest('#gMenu [data-gm]');
+    if (!b) { if (e.target === el) close(); return; }
+    const a = b.getAttribute('data-gm');
+    if (a === 'close' || a === 'stay') close();
+    else if (a === 'out') { close(); doSignOut(); }
+    else if (a === 'switch' || a === 'goto') { if (active()) { err = ''; close(); toast('Tienes un pedido activo. Termínalo antes de cambiar de modo.'); } else if (S.pw) go(S.pw); else { mode = 'pass'; err = ''; paint(); } }
+    else if (a === 'go') { const v = (el.querySelector('#gm-pass') || {}).value || ''; if (v.length < 6) { err = 'Escribe tu contraseña.'; paint(); return; } go(v); }
+  }, true);
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter' && mode === 'pass') { const v = (el.querySelector('#gm-pass') || {}).value || ''; if (v.length >= 6) go(v); } });
+  /* recordar la contraseña solo en memoria mientras dura la sesión */
+  let pend = null;
+  af.addEventListener('submit', () => {
+    if (S.authMode !== 'login') return;
+    let em = $('#a-email').value.trim().toLowerCase(); const pw = $('#a-pass').value;
+    if (em.indexOf('@') > 0 && pw) pend = { email: em, pass: pw };
+  }, true);
+  async function probe(p) {
+    const i = info(); if (!i || i.back) return;
+    let a2; try { a2 = getAuth(initializeApp(FIREBASE_CONFIG, 'probe')); } catch (e) { return; }
+    let found = false;
+    try { await signInWithEmailAndPassword(a2, i.target, p.pass); found = true; try { await signOut(a2); } catch (e) {} } catch (e) {}
+    if (found && S.user && S.email === p.email && !mode) { mode = 'choose'; err = ''; paint(); }
+  }
+  setInterval(() => {
+    if (!S.user) { S.pw = ''; if (mode) close(); }
+    if (pend && S.user && S.ready) {
+      const v = view(); if (v === 'loading' || v === 'auth') return;
+      const p = pend; pend = null;
+      if (S.email === p.email) { S.pw = p.pass; if (!suffixRole(S.email)) probe(p); }
+    }
+    /* alta del segundo perfil: sin elegir quién eres */
+    if (S.user && view() === 'profile') {
+      const sr = suffixRole(S.email);
+      if (sr) {
+        const rd = af.querySelector('input[name=role][value=' + sr + ']');
+        if (rd && !rd.checked) { rd.checked = true; rd.dispatchEvent(new Event('change', { bubbles: true })); }
+        const nm = $('#a-name'); if (nm && !nm.value && window.__carry) nm.value = window.__carry;
+        $('#authRoles').hidden = true;
+        $('#authTitle').textContent = 'Alta de tu ' + LBL[sr];
+        $('#authLede').textContent = 'Usas el mismo correo y la misma contraseña. Llena los datos de tu ' + LBL[sr] + '; la administración los revisará antes de aprobarlo.';
+      }
+    }
+  }, 400);
 })();
