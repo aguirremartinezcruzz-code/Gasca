@@ -1280,7 +1280,7 @@ function renderRider() {
   const earned = doneToday.reduce((s, o) => s + (Number(o.tarifa) || 0), 0);
 
   $('#riderHead').innerHTML =
-    '<button type="button" class="switch" role="switch" id="onlineSw" aria-checked="' + (S.online ? 'true' : 'false') + '" data-act="online">' +
+    '<button type="button" class="switch" role="switch" id="onlineSw0" aria-checked="' + (S.online ? 'true' : 'false') + '" data-act="online">' +
     '<span class="track" aria-hidden="true"></span><span><strong>' + (S.online ? 'En línea' : 'Desconectado') + '</strong>' +
     '<span class="sub">' + (S.online ? 'Deja Gasca abierta y la pantalla encendida para recibir avisos.' : 'Conéctate para recibir avisos de pedidos nuevos.') + '</span></span></button>' +
     (S.walletReady && saldoC() < 2000 ? '<p class="warn">Saldo bajo. Recarga para seguir aceptando pedidos.</p>' : '');
@@ -1289,15 +1289,14 @@ function renderRider() {
   av.hidden = S.tab !== 'disp'; tr.hidden = S.tab !== 'viajes';
   const sm = $('#riderSum'); sm.hidden = S.tab !== 'resumen';
   if (S.tab === 'resumen') renderEnCurso(sm, active.slice().reverse());
-  { const pf = pfDiv(); pf.hidden = S.tab !== 'perfil'; $('#riderHead').hidden = ['perfil', 'viajes', 'saldo', 'resumen'].includes(S.tab); document.body.classList.toggle('pf-on', ['perfil', 'viajes', 'saldo', 'resumen'].includes(S.tab)); if (!pf.hidden) renderPerfil(pf); }
+  { const pf = pfDiv(); pf.hidden = S.tab !== 'perfil'; $('#riderHead').hidden = ['perfil', 'viajes', 'saldo', 'resumen', 'disp'].includes(S.tab); document.body.classList.toggle('pf-on', ['perfil', 'viajes', 'saldo', 'resumen', 'disp'].includes(S.tab)); if (!pf.hidden) renderPerfil(pf); }
   { const mp = mpDiv(); mp.hidden = S.tab !== 'saldo'; if (!mp.hidden) renderMisPedidos(mp, my); }
   { const showW = S.tab === 'saldo' && (S.rechargeOpen || S.recargas.some((r) => r.estado !== 'confirmada')); /* Saldo: limpia; solo se ve al recargar o con una recarga pendiente */
     $('#riderWallet').hidden = !showW; if (showW) renderWallet(); }
   if (S.tab === 'disp') {
-    const rd = !S.online ? ['Estás desconectado', 'Enciende "En línea" arriba para recibir pedidos.'] : open.length ? [open.length + (open.length === 1 ? ' pedido disponible' : ' pedidos disponibles'), 'Primero el que llegó antes.'] : ['Esperando pedidos…', 'Deja Gasca abierta. Suena un aviso cuando llegue uno.'];
-    const radar = '<div class="radar' + (S.online ? ' on' : '') + (open.length ? ' mini' : '') + '"><div class="rings"><i></i><i></i><i></i><span class="sweep"></span><span class="core"><svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="23" r="4"/><circle cx="25" cy="23" r="4"/><path d="M8 23l5-9h6l3 9M19 14l-2-5h4M13 14H9"/></svg></span></div><b>' + rd[0] + '</b><small>' + rd[1] + '</small></div>';
-    av.innerHTML = !S.openReady ? emptyBox('Cargando pedidos', 'Un momento.') : radar + open.map(availCard).join('');
+    av.innerHTML = !S.openReady ? '' : (open.length ? '<div class="subhead">Pedidos disponibles (' + open.length + ')</div>' + open.map(availCard).join('') : '');
   }
+  try { window.__mapSync && window.__mapSync({ active, act0: active.length ? active[active.length - 1] : null, done, doneToday }); } catch (e) { console.warn('mapa', e); }
   if (S.tab === 'viajes') {
     const wk = new Date(); wk.setHours(0, 0, 0, 0); wk.setDate(wk.getDate() - ((wk.getDay() + 6) % 7));
     const nWeek = done.filter((o) => (o.entregadoEn || o.creadoEn || 0) >= wk.getTime()).length;
@@ -1766,6 +1765,186 @@ document.addEventListener('click', (e) => {
     syncSheet(); render(); pushPresence();
   }
 });
+
+/* ---------- mapa de inicio (casita): mapa propio con OpenStreetMap, sin librerías de pago ---------- */
+(function () {
+  const TS = 256, TILE = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', TEPIC = [21.5042, -104.8946];
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const proj = (lat, lon, z) => { const s = TS * Math.pow(2, z), sl = Math.sin(clamp(lat, -85, 85) * Math.PI / 180); return [(lon + 180) / 360 * s, (0.5 - Math.log((1 + sl) / (1 - sl)) / (4 * Math.PI)) * s]; };
+  const unproj = (x, y, z) => { const s = TS * Math.pow(2, z), n = Math.PI - 2 * Math.PI * y / s; return [180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))), x / s * 360 - 180]; };
+
+  class GMap {
+    constructor(el) {
+      this.el = el; this.z = 13; this.lat = TEPIC[0]; this.lon = TEPIC[1]; this.tiles = new Map(); this.mk = new Map(); this.rt = null; this.raf = 0; this.ptrs = new Map(); this.userMoved = () => {};
+      el.innerHTML = '<div class="gm-tiles"></div><div class="gm-tint"></div><svg class="gm-svg"><path class="gm-rc"></path><path class="gm-rl"></path></svg><div class="gm-mk"></div>';
+      this.tl = el.querySelector('.gm-tiles'); this.rc = el.querySelector('.gm-rc'); this.rl = el.querySelector('.gm-rl'); this.ml = el.querySelector('.gm-mk');
+      this.bind();
+    }
+    size() { return [this.el.clientWidth || 300, this.el.clientHeight || 300]; }
+    ctr() { return proj(this.lat, this.lon, this.z); }
+    scr(lat, lon) { const s = this.size(), c = this.ctr(), p = proj(lat, lon, this.z); return [p[0] - c[0] + s[0] / 2, p[1] - c[1] + s[1] / 2]; }
+    setView(lat, lon, z) { this.lat = clamp(lat, -85, 85); this.lon = lon; if (z != null) this.z = clamp(z, 3, 18); this.draw(); }
+    panBy(dx, dy) { const c = this.ctr(), ll = unproj(c[0] - dx, c[1] - dy, this.z); this.lat = clamp(ll[0], -85, 85); this.lon = ll[1]; this.draw(); }
+    zoomBy(dz) { this.z = clamp(this.z + dz, 3, 18); this.draw(); }
+    fit(pts, pad) {
+      if (!pts.length) return; const s = this.size(); pad = pad || {}; const t = pad.t || 70, b = pad.b || 190, l = pad.l || 40, r = pad.r || 40;
+      const la = pts.map((p) => p[0]), lo = pts.map((p) => p[1]), a = [Math.min(...la), Math.min(...lo)], c = [Math.max(...la), Math.max(...lo)];
+      let z = 18;
+      for (; z > 3; z -= 0.5) { const p1 = proj(a[0], a[1], z), p2 = proj(c[0], c[1], z); if (Math.abs(p2[0] - p1[0]) <= s[0] - l - r && Math.abs(p2[1] - p1[1]) <= s[1] - t - b) break; }
+      z = Math.min(z, 17);
+      const p1 = proj(a[0], a[1], z), p2 = proj(c[0], c[1], z), mid = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+      const sx = (l + (s[0] - r)) / 2 - s[0] / 2, sy = (t + (s[1] - b)) / 2 - s[1] / 2, ll = unproj(mid[0] - sx, mid[1] - sy, z);
+      this.setView(ll[0], ll[1], z);
+    }
+    setMarker(id, lat, lon, html, cls) {
+      let m = this.mk.get(id);
+      if (!m) { m = { el: document.createElement('div') }; m.el.className = 'gm-m ' + (cls || ''); m.el.innerHTML = html; this.ml.appendChild(m.el); this.mk.set(id, m); }
+      m.lat = lat; m.lon = lon; this.draw();
+    }
+    delMarker(id) { const m = this.mk.get(id); if (m) { m.el.remove(); this.mk.delete(id); } }
+    setRoute(pts) { this.rt = pts && pts.length > 1 ? pts : null; this.draw(); }
+    draw() { if (this.raf) return; this.raf = requestAnimationFrame(() => { this.raf = 0; this.paint(); }); }
+    paint() {
+      const s = this.size(), W = s[0], H = s[1], c = this.ctr(), zi = clamp(Math.round(this.z), 0, 18), sc = Math.pow(2, this.z - zi), ts = TS * sc, n = Math.pow(2, zi);
+      const x0 = Math.floor((c[0] - W / 2) / ts), x1 = Math.floor((c[0] + W / 2) / ts), y0 = Math.floor((c[1] - H / 2) / ts), y1 = Math.floor((c[1] + H / 2) / ts), need = new Set();
+      for (let tx = x0; tx <= x1; tx++) for (let ty = y0; ty <= y1; ty++) {
+        if (ty < 0 || ty >= n) continue;
+        const key = zi + '/' + tx + '/' + ty; need.add(key);
+        let im = this.tiles.get(key);
+        if (!im) { im = new Image(); im.className = 'gm-t'; im.alt = ''; im.draggable = false; im.onerror = () => { im.style.visibility = 'hidden'; }; im.src = TILE.replace('{z}', zi).replace('{x}', ((tx % n) + n) % n).replace('{y}', ty); this.tl.appendChild(im); this.tiles.set(key, im); }
+        im.style.transform = 'translate(' + (tx * ts - c[0] + W / 2) + 'px,' + (ty * ts - c[1] + H / 2) + 'px)'; im.style.width = im.style.height = (ts + 0.6) + 'px';
+      }
+      for (const [k, im] of this.tiles) if (!need.has(k)) { im.remove(); this.tiles.delete(k); }
+      this.mk.forEach((m) => { const p = this.scr(m.lat, m.lon); m.el.style.transform = 'translate(' + p[0] + 'px,' + p[1] + 'px)'; });
+      const d = this.rt ? 'M' + this.rt.map((p) => { const q = this.scr(p[0], p[1]); return q[0].toFixed(1) + ',' + q[1].toFixed(1); }).join('L') : '';
+      this.rc.setAttribute('d', d); this.rl.setAttribute('d', d);
+    }
+    bind() {
+      const el = this.el;
+      el.addEventListener('pointerdown', (e) => { try { el.setPointerCapture(e.pointerId); } catch (x) {} this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); });
+      el.addEventListener('pointermove', (e) => {
+        const p = this.ptrs.get(e.pointerId); if (!p) return;
+        if (this.ptrs.size === 1) { this.panBy(e.clientX - p.x, e.clientY - p.y); this.userMoved(); }
+        else if (this.ptrs.size === 2) { const o = [...this.ptrs.entries()].find((en) => en[0] !== e.pointerId)[1], a = Math.hypot(p.x - o.x, p.y - o.y), b = Math.hypot(e.clientX - o.x, e.clientY - o.y); if (a > 0 && b > 0) this.zoomBy(Math.log2(b / a)); this.userMoved(); }
+        p.x = e.clientX; p.y = e.clientY;
+      });
+      const up = (e) => { this.ptrs.delete(e.pointerId); };
+      el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+      el.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomBy(e.deltaY < 0 ? 0.5 : -0.5); this.userMoved(); }, { passive: false });
+      el.addEventListener('dblclick', () => { this.zoomBy(1); this.userMoved(); });
+    }
+  }
+
+  const UI = { map: null, wrap: null, follow: true, placed: false, fitKey: '', routeKey: '', lastFetch: 0, route: null, pend: new Set(), chip: '' };
+  const IC = {
+    loc: '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/></svg>',
+    pw: '<svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M17.7 6.6a8 8 0 1 1-11.4 0"/></svg>',
+    coin: '<svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true"><ellipse cx="15" cy="19" rx="11" ry="8.5" fill="#34a853"/><circle cx="23.5" cy="16.5" r="1.4" fill="#0f1115"/><path d="M5 14 3 9l5 2z" fill="#34a853"/><rect x="12" y="8.2" width="7" height="2.4" rx="1.2" fill="#0f1115"/><rect x="9" y="25" width="3" height="4" rx="1" fill="#2d8f47"/><rect x="18" y="25" width="3" height="4" rx="1" fill="#2d8f47"/></svg>',
+    rest: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff" aria-hidden="true"><path d="M7 2v8a2 2 0 0 0 1.5 1.9V22h2V11.9A2 2 0 0 0 12 10V2h-1.5v6H9.7V2H8.3v6H7.5V2zM16.5 2c-1.7 1.3-2.5 3.5-2.5 6 0 1.8.7 3 2 3.4V22h2V2z"/></svg>'
+  };
+  const mkPick = '<div class="gm-pin pick">' + IC.rest + '</div>', mkDest = '<div class="gm-pin dest"><i></i></div>', mkMe = '<div class="gm-me"><i></i></div>';
+
+  function build() {
+    const ref = document.getElementById('riderAvail'); if (!ref || UI.wrap) return;
+    const w = document.createElement('div'); w.id = 'riderMap'; w.hidden = true;
+    w.innerHTML = '<div class="gm-canvas"></div><div class="gm-ov">' +
+      '<div class="gm-pill"><i class="gm-dot" id="gmDotP"></i><span id="gmPillT"></span></div>' +
+      '<button type="button" class="gm-loc" id="gmLoc" aria-label="Centrar en mi ubicación">' + IC.loc + '</button>' +
+      '<div class="gm-chip" id="gmChip" hidden></div>' +
+      '<button type="button" class="gm-pw" id="onlineSw" data-act="online" role="switch" aria-checked="false">' + IC.pw + '<b id="gmPwT"></b></button>' +
+      '<div class="gm-stats"><span class="gm-ic">' + IC.coin + '</span><b id="gmHoy"></b><em id="gmSem"></em></div>' +
+      '<a class="gm-attr" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a></div>';
+    ref.parentNode.insertBefore(w, ref); UI.wrap = w;
+    UI.map = new GMap(w.querySelector('.gm-canvas'));
+    UI.map.userMoved = () => { UI.follow = false; };
+    w.querySelector('#gmLoc').addEventListener('click', () => {
+      UI.follow = true;
+      if (S.pos) UI.map.setView(S.pos.lat, S.pos.lon, 16.5); else toast('Todavía no encuentro tu ubicación. Enciende el GPS.');
+    });
+  }
+  function put(el, t) { if (el && el.textContent !== t) el.textContent = t; }
+  function sizeIt() {
+    const w = UI.wrap, tabs = document.getElementById('tabs'), top = w.getBoundingClientRect().top + window.scrollY, th = tabs && !tabs.hidden ? tabs.offsetHeight : 0;
+    const h = Math.max(380, Math.round(window.innerHeight - top - th - 16));
+    if (w.style.height !== h + 'px') { w.style.height = h + 'px'; UI.map.draw(); }
+  }
+  const llTxt = (p) => p[0].toFixed(5) + ',' + p[1].toFixed(5);
+  async function fetchRoute(wps, key) {
+    UI.lastFetch = Date.now();
+    let res = null;
+    try {
+      const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 9000);
+      const r = await fetch('https://router.project-osrm.org/route/v1/driving/' + wps.map((p) => p[1].toFixed(5) + ',' + p[0].toFixed(5)).join(';') + '?overview=full&geometries=geojson', { signal: ctl.signal }); clearTimeout(tm);
+      const j = await r.json(), rt = j && j.routes && j.routes[0];
+      if (rt) res = { pts: rt.geometry.coordinates.map((c) => [c[1], c[0]]), m: rt.legs && rt.legs[0] ? rt.legs[0].distance : rt.distance, s: rt.legs && rt.legs[0] ? rt.legs[0].duration : rt.duration };
+    } catch (e) {}
+    if (!res) res = { pts: wps, m: 0, s: 0, straight: true };
+    if (UI.routeKey === key) { UI.route = res; try { render(); } catch (e) {} }
+  }
+  function ptOf(txt) {
+    const c = geoCached(txt);
+    if (c === undefined) { const k = nrm(txt); if (k && !UI.pend.has(k)) { UI.pend.add(k); geoPoint(txt).then(() => { UI.pend.delete(k); try { render(); } catch (e) {} }); } return null; }
+    return c || null;
+  }
+  function sync(ctx) {
+    const show = view() === 'rider' && S.tab === 'disp';
+    build(); if (!UI.wrap) return;
+    const was = !UI.wrap.hidden; UI.wrap.hidden = !show; document.body.classList.toggle('map-on', show);
+    if (!show) return;
+    if (!was) window.scrollTo(0, 0);
+    const map = UI.map; sizeIt();
+    // estado y textos
+    const on = !!S.online, gps = S.posErr ? 'bad' : (S.pos ? 'ok' : 'wait');
+    const pill = !on ? ['Desconectado', 'bad'] : S.posErr ? ['Enciende tu GPS', 'bad'] : !S.pos ? ['Buscando GPS…', 'wait'] : ['Estás en línea', 'ok'];
+    put(document.getElementById('gmPillT'), pill[0]); const dp = document.getElementById('gmDotP'); if (dp.dataset.s !== pill[1]) { dp.dataset.s = pill[1]; dp.className = 'gm-dot ' + pill[1]; }
+    const pw = document.getElementById('onlineSw'); put(document.getElementById('gmPwT'), on ? 'DESCONECTAR' : 'CONECTAR');
+    pw.setAttribute('aria-checked', on ? 'true' : 'false'); pw.classList.toggle('on', on);
+    const net = (o) => (Number(o.tarifa) || 0) - comC(o) / 100, wk = new Date(); wk.setHours(0, 0, 0, 0); wk.setDate(wk.getDate() - ((wk.getDay() + 6) % 7));
+    const hoy = ctx.doneToday.reduce((t, o) => t + net(o), 0), sem = ctx.done.filter((o) => (o.entregadoEn || o.creadoEn || 0) >= wk.getTime()).reduce((t, o) => t + net(o), 0);
+    put(document.getElementById('gmHoy'), 'Hoy ' + m2(hoy) + ' · ' + ctx.doneToday.length + (ctx.doneToday.length === 1 ? ' entrega' : ' entregas')); put(document.getElementById('gmSem'), 'Semana $' + Math.round(sem).toLocaleString('es-MX'));
+    // mi posición
+    if (on && S.pos) {
+      map.setMarker('me', S.pos.lat, S.pos.lon, mkMe, 'me');
+      if (!UI.placed) { UI.placed = true; UI.follow = true; map.setView(S.pos.lat, S.pos.lon, 16.5); }
+      else if (UI.follow) map.setView(S.pos.lat, S.pos.lon);
+    } else { map.delMarker('me'); if (!UI.placed && !S.pos) map.setView(TEPIC[0], TEPIC[1], 13); }
+    // pedido activo: ruta
+    const o = ctx.act0, chip = document.getElementById('gmChip');
+    if (!o) { map.setRoute(null); map.delMarker('pick'); map.delMarker('dest'); UI.route = null; UI.routeKey = ''; UI.fitKey = ''; if (UI.chip) { UI.chip = ''; chip.hidden = true; chip.innerHTML = ''; } return; }
+    const pk = o.estado === 'asignado' ? ptOf(o.pickup) : null, ds = ptOf(o.dest), me = on && S.pos ? [S.pos.lat, S.pos.lon] : null;
+    if (pk) map.setMarker('pick', pk[0], pk[1], mkPick, 'pick'); else map.delMarker('pick');
+    if (ds) map.setMarker('dest', ds[0], ds[1], mkDest, 'dest'); else map.delMarker('dest');
+    const wps = [me, pk, ds].filter(Boolean), target = pk || ds;
+    if (wps.length >= 2) {
+      const key = o.id + o.estado + '|' + wps.map((p) => p[0].toFixed(3) + ',' + p[1].toFixed(3)).join('|');
+      if (key !== UI.routeKey && (!UI.route || Date.now() - UI.lastFetch > 15000 || UI.fitKey !== o.id + o.estado)) { UI.routeKey = key; if (UI.fitKey !== o.id + o.estado) UI.route = null; fetchRoute(wps, key); }
+      if (UI.route) map.setRoute(UI.route.pts);
+      const fk = o.id + o.estado; if (UI.fitKey !== fk) { UI.fitKey = fk; UI.follow = false; map.fit(wps, { t: 160, b: 210 }); }
+    }
+    const r = UI.route, lbl = o.estado === 'asignado' ? 'Recoger: ' + (o.shop || 'restaurante') : 'Entregar: ' + (destParts(o.dest).dir || '').slice(0, 40);
+    const extra = r && r.m ? ' · ' + (r.m < 1000 ? Math.round(r.m / 10) * 10 + ' m' : (r.m / 1000).toFixed(1) + ' km') + ' · ' + Math.max(1, Math.round(r.s / 60)) + ' min' : '';
+    const nav = target ? 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + llTxt(target) : mapsUrl(o.estado === 'asignado' ? o.pickup : o.dest);
+    const html = '<span>' + esc(lbl + extra) + '</span><a href="' + esc(nav) + '" target="_blank" rel="noopener">Navegar</a>';
+    if (UI.chip !== html) { UI.chip = html; chip.innerHTML = html; chip.hidden = false; }
+  }
+  window.__mapSync = sync; window.__gmap = UI;
+  window.addEventListener('resize', () => { try { if (UI.wrap && !UI.wrap.hidden) sizeIt(); } catch (e) {} });
+  const st = document.createElement('style');
+  st.textContent = '#riderMap{position:relative;margin:8px 0 14px;border-radius:22px;overflow:hidden;background:#0a3047;box-shadow:0 2px 10px rgba(0,0,0,.25);isolation:isolate}#riderMap[hidden]{display:none}' +
+    '.gm-canvas{position:absolute;inset:0;touch-action:none;overflow:hidden;cursor:grab;background:#0a3047}.gm-tiles,.gm-mk{position:absolute;inset:0}.gm-t{position:absolute;left:0;top:0;max-width:none;user-select:none;-webkit-user-drag:none;filter:invert(1) hue-rotate(188deg) brightness(.85) contrast(.95) saturate(.5);will-change:transform}' +
+    '.gm-tint{position:absolute;inset:0;background:#0d5a80;mix-blend-mode:screen;opacity:.5;pointer-events:none}.gm-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}.gm-rc{fill:none;stroke:#0b1620;stroke-width:11;stroke-linecap:round;stroke-linejoin:round;opacity:.75}.gm-rl{fill:none;stroke:#f6a000;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}' +
+    '.gm-m{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}.gm-me i{position:absolute;left:-11px;top:-11px;width:22px;height:22px;border-radius:50%;background:#2f7df6;border:3.5px solid #fff;box-shadow:0 0 0 8px rgba(47,125,246,.28),0 2px 6px rgba(0,0,0,.5)}' +
+    '.gm-pin{position:absolute;left:-19px;top:-46px;width:38px;height:38px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:grid;place-items:center;border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.5)}.gm-pin.pick{background:#f08c00}.gm-pin.pick svg{transform:rotate(45deg)}.gm-pin.dest{background:#e53935}.gm-pin.dest i{width:12px;height:12px;border-radius:50%;background:#fff;display:block}' +
+    '.gm-ov{position:absolute;inset:0;pointer-events:none}.gm-ov>*{pointer-events:auto}' +
+    '.gm-pill{position:absolute;left:12px;top:12px;display:flex;align-items:center;gap:10px;background:rgba(10,12,16,.92);color:#fff;border-radius:99px;padding:11px 18px;font-weight:800;font-size:17px;box-shadow:0 2px 8px rgba(0,0,0,.4)}.gm-dot{width:13px;height:13px;border-radius:50%;background:#1fa855}.gm-dot.bad{background:#e53935}.gm-dot.wait{background:#f6b400}' +
+    '.gm-loc{position:absolute;right:12px;top:12px;width:62px;height:62px;border-radius:50%;border:0;background:rgba(10,12,16,.92);color:#fff;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.4)}' +
+    '.gm-chip{position:absolute;left:12px;right:12px;top:72px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.96);color:#16202a;border-radius:14px;padding:10px 14px;font-weight:700;font-size:15px;box-shadow:0 2px 8px rgba(0,0,0,.35)}.gm-chip[hidden]{display:none}.gm-chip span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gm-chip a{flex:none;background:#16202a;color:#fff;border-radius:99px;padding:8px 16px;text-decoration:none;font-weight:800}' +
+    '.gm-pw{position:absolute;left:50%;bottom:78px;transform:translateX(-50%);width:120px;height:120px;border-radius:50%;border:5px solid #fff;background:#1fa855;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;box-shadow:0 4px 14px rgba(0,0,0,.5)}.gm-pw.on{background:#e53935}.gm-pw b{font-size:12.5px;letter-spacing:0;font-weight:800;white-space:nowrap}' +
+    '.gm-stats{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;gap:12px;background:rgba(10,12,16,.94);color:#fff;border-radius:18px;padding:12px 14px;font-size:15.5px;white-space:nowrap}.gm-stats b{flex:1;font-weight:800;min-width:0}.gm-stats em{font-style:normal;opacity:.75;font-size:14.5px}.gm-ic{display:grid;place-items:center}' +
+    '.gm-attr{position:absolute;right:8px;bottom:82px;font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;background:rgba(0,0,0,.35);padding:1px 5px;border-radius:5px}' +
+    '.map-on #modeBar{display:none!important}';
+  document.head.appendChild(st);
+})();
 
 /* ---------- inicio ---------- */
 setMode('login');
