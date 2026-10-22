@@ -1250,7 +1250,7 @@ function renderVerify() {
 
 function shopCard(o) {
   let s = '';
-  if (o.estado === 'abierto') s = '<div class="status"><span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>Buscando repartidor</div>';
+  if (o.estado === 'abierto') s = '<div class="status"><span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>Buscando repartidor</div>' + (isExpired(o) ? '' : '<button class="btn primary small block" type="button" data-act="wz-open" data-id="' + esc(o.id) + '">🛵 Ver cómo va la búsqueda</button>');
   else if (o.estado === 'asignado') s = '<div class="status">' + drvAvatar(o.driverId) + '<span><b>' + esc(o.driverName || 'Un repartidor') + '</b> va por el pedido · ' + ago(o.asignadoEn || o.creadoEn) + '</span></div>';
   else if (o.estado === 'recogido') s = '<div class="status">' + drvAvatar(o.driverId) + '<span><b>' + esc(o.driverName || 'El repartidor') + '</b> ya salió con el pedido</span></div>';
   const cod = S.codes[o.id];
@@ -1479,7 +1479,10 @@ function renderRider() {
   { const showW = S.tab === 'saldo' && (S.rechargeOpen || S.recargas.some((r) => r.estado !== 'confirmada')); /* Saldo: limpia; solo se ve al recargar o con una recarga pendiente */
     $('#riderWallet').hidden = !showW; if (showW) renderWallet(); }
   if (S.tab === 'disp') {
-    av.innerHTML = !S.openReady ? '' : (open.length ? '<div class="subhead">Pedidos disponibles (' + open.length + ')</div>' + open.map(availCard).join('') : '');
+    const far = S.online ? S.openOrders.filter(liveR).filter((x) => !inMyZone(x)) : [];
+    const lowS = S.online && S.walletReady && S.openOrders.filter(liveR).some((x) => !canTake(x));
+    const hint = (lowS ? '<p class="warn">Tu saldo no alcanza para algunos pedidos. Recarga en la motito.</p>' : '') + (far.length ? '<p class="warn">Hay ' + far.length + (far.length === 1 ? ' pedido abierto' : ' pedidos abiertos') + ' que no te quedan cerca (a más de ' + (S.radioKm || 3) + ' km) o aún no se ubica su dirección.</p>' : '');
+    av.innerHTML = !S.openReady ? '' : hint + (open.length ? '<div class="subhead">Pedidos disponibles (' + open.length + ')</div>' + open.map(availCard).join('') : '');
   }
   try { window.__mapSync && window.__mapSync({ offer: S.sheetId ? byId(S.sheetId) : null, active, act0: active.length ? active[active.length - 1] : null, done, doneToday }); } catch (e) { console.warn('mapa', e); }
   if (S.tab === 'viajes') {
@@ -1913,6 +1916,7 @@ document.addEventListener('click', (e) => {
   else if (act === 'cancel') { S.cancelId = id; render(); }
   else if (act === 'cancel-no') { S.cancelId = null; render(); }
   else if (act === 'cancel-yes') cancelOrder(id);
+  else if (act === 'wz-open') wzDone(id);
   else if (act === 'accept') { ensureAudio(); accept(id); }
   else if (act === 'counter') { ensureAudio(); counter(id, Number(b.getAttribute('data-m'))); }
   else if (act === 're-offer') reOffer(id);
@@ -3003,12 +3007,17 @@ function wzDone(id) {
   const d = document.createElement('div'); d.id = 'wzDone';
   d.innerHTML = '<div class="radar on" aria-hidden="true"><div class="rings"><i></i><i></i><i></i><span class="sweep"></span><span class="core">🛵</span></div></div><h2 id="wzDoneT">Buscando repartidor…</h2><p class="hint" id="wzDoneS">Pedido ' + esc(folio(id)) + '</p><div id="wzOf" style="width:100%;max-width:340px"></div>' +
     (pers ? '<p class="paynote" id="wzDoneC" style="margin:0">Tiempo para que alguien la tome: <b id="wzCd">…</b> s</p>' : '') +
-    '<button type="button" class="btn primary" data-wzd="ver">Ver mi pedido</button>';
+    '<button type="button" class="btn ghost" data-wzd="ver">Ir a mis pedidos</button><button type="button" class="btn ghost" data-wzd="cancel" style="color:var(--red)">Cancelar pedido</button>';
   document.body.appendChild(d);
   const close = (toast2, tab) => { clearInterval(wzDoneT); wzDoneT = null; d.remove(); S.tab = tab || 'pedidos'; if (toast2) toast(toast2); render(); };
-  d.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-wzd]')) close(); });
+  d.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('[data-wzd]'); if (!b) return;
+    if (b.getAttribute('data-wzd') === 'cancel') { if (confirm('¿Cancelar este pedido?')) { cancelOrder(id); close(); } return; }
+    close();
+  });
+  let miss = 0;
   wzDoneT = setInterval(() => {
-    if (view() !== 'shop') { clearInterval(wzDoneT); wzDoneT = null; d.remove(); return; }
+    if (view() !== 'shop') { if (++miss < 10) return; clearInterval(wzDoneT); wzDoneT = null; d.remove(); return; } miss = 0;
     const o = byId(id);
     if (!o) { if (Date.now() - t0 > 6000) close(); return; }
     if (o.estado === 'asignado' || o.estado === 'recogido' || o.estado === 'entregado') {
