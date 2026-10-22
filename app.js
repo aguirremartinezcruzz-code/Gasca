@@ -1473,7 +1473,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '22-oct-2026 · 5';
+const APP_V = '22-oct-2026 · 6';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -2995,12 +2995,12 @@ function wzBuild() {
     { t: '💵 ¿Quién paga el mandadito?', h: 'Y cuánto ofreces. Los repartidores pueden aceptar tu oferta o proponerte otra.', e: [$('#cliQuien')].concat(pay), chk: 'o' },
     { t: '📍 ¿Dónde lo recogemos?', h: 'La dirección de donde el repartidor va a recoger.', e: [$('#pickFields')] },
     { t: '🙋 ¿A quién se lo entregamos?', h: 'Nombre y WhatsApp de quien lo recibe. Si ya le has enviado antes, tócalo abajo.', e: who },
-    { t: '🏠 ¿En qué dirección se entrega?', h: 'Mientras más claro, más rápido llega.', e: addr },
+    { t: '🏠 ¿A qué dirección se lleva el pedido?', h: 'La dirección de quien lo recibe, a donde el repartidor va a entregar. Mientras más claro, más rápido llega.', e: addr },
     { t: '✅ Revisa tu pedido', h: 'Si todo está bien, toca Generar pedido.', e: [sum, $('#paySum'), btn], last: true }
   ] : [
     { t: '¿Qué se entrega?', ic: WZ_POT, h: 'Por ejemplo: 2 pizzas grandes y 1 refresco.', e: [wzF('o-desc'), $('#wzLast')] },
     { t: '🙋 ¿A quién se lo entregamos?', h: 'Nombre y WhatsApp de tu cliente. Si ya le has enviado antes, tócalo abajo.', e: who },
-    { t: '🏠 ¿En qué dirección?', h: 'Mientras más claro, más rápido llega.', e: addr },
+    { t: '🏠 ¿A qué dirección se lleva el pedido?', h: 'La dirección de tu cliente, a donde el repartidor va a entregar. Mientras más claro, más rápido llega.', e: addr },
     { t: '💵 ¿Cuánto se cobra?', h: 'Si el cliente ya pagó, deja "Cobrar al cliente" vacío.', e: pay },
     { t: '✅ Revisa tu pedido', h: 'Si todo está bien, toca Generar pedido.', e: [sum, pk, btn], last: true }
   ];
