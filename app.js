@@ -1473,7 +1473,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '22-oct-2026 · 8';
+const APP_V = '22-oct-2026 · 9';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -3627,7 +3627,7 @@ function tarFor(km) {
 }
 (function () {
   const st = document.createElement('style');
-  st.textContent = '#quoteBox{margin:8px 0 0;padding:10px 12px;border-radius:12px;background:#fff7e0;border:2px solid #f6b400;font-size:14.5px;font-weight:600}#quoteBox small{display:block;font-weight:500;opacity:.75;margin-top:2px}#quoteBox button{margin-top:6px;border:2px solid #16202a;background:#fff;border-radius:99px;padding:6px 12px;font:inherit;font-weight:800;color:inherit;min-height:38px}';
+  st.textContent = '#quoteBox{margin:8px 0 0;padding:10px 12px;border-radius:12px;background:#fff7e0;color:#16202a;border:2px solid #f6b400;font-size:14.5px;font-weight:600}#quoteBox small{display:block;font-weight:500;opacity:.75;margin-top:2px}#quoteBox button{margin-top:6px;border:2px solid #16202a;background:#fff;border-radius:99px;padding:6px 12px;font:inherit;font-weight:800;color:#16202a;min-height:38px}';
   document.head.appendChild(st);
   let key = '', timer = 0, auto = null, seq = 0;
   const box = () => {
