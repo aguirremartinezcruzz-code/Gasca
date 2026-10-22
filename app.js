@@ -210,6 +210,25 @@ function view() {
 
 /* ---------- entrar y crear cuenta ---------- */
 const af = $('#authForm');
+(function injectPw() {
+  const f1 = document.getElementById('fPass'); if (!f1) return;
+  const st = document.createElement('style');
+  st.textContent = '.pw-wrap{position:relative}.pw-wrap input{padding-right:56px!important}.pw-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:46px;height:46px;border:0;background:none;display:grid;place-items:center;cursor:pointer;color:#16202a;opacity:.7;border-radius:12px}.pw-eye:active{background:rgba(0,0,0,.06)}.pw-eye svg{width:26px;height:26px}';
+  document.head.appendChild(st);
+  const EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 19C5 19 1 12 1 12a18.5 18.5 0 0 1 5.06-5.94"/><path d="M9.9 4.24A10.9 10.9 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>';
+  const f2 = f1.cloneNode(true); f2.id = 'fPass2'; f2.hidden = true;
+  const l2 = f2.querySelector('label'); l2.setAttribute('for', 'a-pass2'); l2.textContent = 'Confirmar contraseña';
+  const i2 = f2.querySelector('input'); i2.id = 'a-pass2'; i2.autocomplete = 'new-password'; i2.placeholder = 'Escríbela otra vez';
+  f1.after(f2);
+  [f1, f2].forEach((f) => {
+    const inp = f.querySelector('input'), w = document.createElement('div'); w.className = 'pw-wrap';
+    inp.parentNode.insertBefore(w, inp); w.appendChild(inp);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'pw-eye'; b.setAttribute('aria-label', 'Mostrar contraseña'); b.innerHTML = EYE;
+    b.addEventListener('click', () => { const show = inp.type === 'password'; inp.type = show ? 'text' : 'password'; b.innerHTML = show ? OFF : EYE; b.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña'); });
+    w.appendChild(b);
+  });
+})();
 (function injectCli() {
   const sh = af.querySelector('input[value="shop"]');
   if (sh) { const l = sh.closest('label'); l.querySelector('b').textContent = 'Para negocios'; l.querySelector('small').textContent = 'Soy tienda o restaurante'; }
@@ -237,7 +256,7 @@ function setMode(m) {
   $('#authRoles').hidden = !form;
   $('#fName').hidden = !form;
   $('#fAddr').hidden = !(form && roleVal() === 'shop');
-  $('#fEmail').hidden = pr; $('#fPass').hidden = pr;
+  $('#fEmail').hidden = pr; $('#fPass').hidden = pr; { const f2 = document.getElementById('fPass2'); if (f2) f2.hidden = !su; }
   $('#authHint').hidden = !form;
   $('#lblName').textContent = roleVal() === 'shop' ? 'Nombre del negocio' : 'Tu nombre';
   $('#a-name').placeholder = roleVal() === 'shop' ? 'Ej. Pizzería La Esquina' : 'Ej. Juan Pérez';
@@ -318,6 +337,7 @@ af.addEventListener('submit', async (e) => {
       if (role === 'cliente' || role === 'rider') email = telEmail(tel);
       if (!email) return fail('Escribe tu correo.');
       if (pass.length < 6) return fail('La contraseña debe tener al menos 6 caracteres.');
+      { const p2 = document.getElementById('a-pass2'); if (p2 && p2.value !== pass) return fail('Las contraseñas no coinciden. Revísalas.'); }
       if (OWNER_OK && email === OWNER) return fail('Ese correo es del dueño. Usa "Soy el dueño".');
       setBusy(true); S.creating = true; render();
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
@@ -370,14 +390,14 @@ async function doSignOut() {
   }
   stopAll(); resetData();
   try { await signOut(auth); } catch (e) {}
-  $('#a-pass').value = '';
+  $('#a-pass').value = ''; { const p2 = document.getElementById('a-pass2'); if (p2) p2.value = ''; }
 }
 
 /* ---------- arranque de sesión ---------- */
 function bootstrap(u) {
   stopAll(); resetData();
   S.user = u || null; S.ready = true;
-  if (!u) { S.uid = null; S.email = ''; S.ownerEmail = false; S.isAdmin = false; $('#a-pass').value = ''; setMode('login'); render(); return; }
+  if (!u) { S.uid = null; S.email = ''; S.ownerEmail = false; S.isAdmin = false; $('#a-pass').value = ''; { const p2 = document.getElementById('a-pass2'); if (p2) p2.value = ''; } setMode('login'); render(); return; }
   S.uid = u.uid; S.email = (u.email || '').toLowerCase(); S.soporteLink = false;
   S.ownerEmail = OWNER_OK && S.email === OWNER;
   S.isAdmin = S.ownerEmail && u.emailVerified === true;
@@ -2512,7 +2532,7 @@ function delivNotice(o) {
     '#authRoles input:checked+.card-r{border-color:var(--rc,#f6b400)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--rc,#f6b400) 30%,transparent)}' +
     '#authRoles .rl-gone{display:none!important}#authRoles .role{animation:rlin .35s ease both}#authRoles .role:nth-of-type(2){animation-delay:.07s}#authRoles .role:nth-of-type(3){animation-delay:.14s}@keyframes rlin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}' +
     '#rlChange{display:none;margin:0 0 4px;text-align:left;background:#fff;border:2px solid var(--line,#cfd6de);border-radius:14px;font-weight:800;font-size:16px;padding:10px 18px;min-height:46px;color:inherit;box-shadow:0 2px 6px rgba(20,30,45,.08)}#rlChange:active{transform:scale(.97)}.rl-chosen #rlChange{display:inline-flex;align-items:center;gap:8px;width:auto;align-self:flex-start;justify-self:start}.rl-chosen .legend{display:none}' +
-    '.rl-pick #fName,.rl-pick #fAddr,.rl-pick #fTel,.rl-pick #fEmail,.rl-pick #fPass,.rl-pick #authHint,.rl-pick #authBtn{display:none!important}' +
+    '.rl-pick #fName,.rl-pick #fAddr,.rl-pick #fTel,.rl-pick #fEmail,.rl-pick #fPass,.rl-pick #fPass2,.rl-pick #authHint,.rl-pick #authBtn{display:none!important}' +
     '#authForm.rl-pick #rlWait{display:block}#rlWait{display:none;text-align:center;font-weight:700;opacity:.65;margin:6px 0}@media (prefers-reduced-motion:reduce){#authRoles .role{animation:none}}';
   document.head.appendChild(st);
   fs.insertAdjacentHTML('beforeend', '<button type="button" id="rlChange"><span aria-hidden="true">←</span> Regresar</button>');
