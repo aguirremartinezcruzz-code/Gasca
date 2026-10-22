@@ -3,7 +3,8 @@ import { FIREBASE_CONFIG, OWNER_EMAIL } from './firebase-config.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {
   getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  signOut, sendEmailVerification, sendPasswordResetEmail, reload, setPersistence, browserLocalPersistence, browserSessionPersistence
+  signOut, sendEmailVerification, sendPasswordResetEmail, reload, setPersistence, browserLocalPersistence, browserSessionPersistence,
+  updatePassword, reauthenticateWithCredential, EmailAuthProvider
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
   initializeFirestore, doc, getDoc, getDocs, setDoc, updateDoc, collection, query, where,
@@ -1177,20 +1178,62 @@ function pfDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPerfil'; el.className = 'stack'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref.nextSibling); }
   return el;
 }
-function renderPerfil(el, nDone) {
-  const tel = (S.profile && /^Tel (\d{10})$/.exec(S.profile.addr || '') || [])[1] || telOf(S.email.replace(/\+gasca-(negocio|repartidor|personal)(?=@)/, ''));
-  const rn = S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') : '';
+const PI = {
+  moon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.4 14.6A8.6 8.6 0 0 1 9.4 3.6a.7.7 0 0 0-.9-.9A9.8 9.8 0 1 0 21.3 15.5a.7.7 0 0 0-.9-.9z"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 22a2.3 2.3 0 0 0 2.2-1.7H9.8A2.3 2.3 0 0 0 12 22zm7-5.2V11a7 7 0 0 0-5.5-6.8V3.5a1.5 1.5 0 0 0-3 0v.7A7 7 0 0 0 5 11v5.8l-1.7 1.7v.9h17.4v-.9z"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7 10V7a5 5 0 0 1 10 0v3h.5A2.5 2.5 0 0 1 20 12.5v7a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-7A2.5 2.5 0 0 1 6.5 10zm2 0h6V7a3 3 0 0 0-6 0zm3 4.2a1.6 1.6 0 0 0-.8 3V19h1.6v-1.8a1.6 1.6 0 0 0-.8-3z"/></svg>',
+  list: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5a1.4 1.4 0 1 1 2.8 0 1.4 1.4 0 0 1-2.8 0zm5.2-.9h12.6a.9.9 0 0 1 0 1.8H8.2a.9.9 0 0 1 0-1.8zM3 12a1.4 1.4 0 1 1 2.8 0A1.4 1.4 0 0 1 3 12zm5.2-.9h12.6a.9.9 0 0 1 0 1.8H8.2a.9.9 0 0 1 0-1.8zM3 18.5a1.4 1.4 0 1 1 2.8 0 1.4 1.4 0 0 1-2.8 0zm5.2-.9h12.6a.9.9 0 0 1 0 1.8H8.2a.9.9 0 0 1 0-1.8z"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12 2 4 5.2v6c0 5 3.4 9.3 8 10.8 4.6-1.5 8-5.8 8-10.8v-6zm-1 6h2v2h-2zm0 4h2v5h-2z"/></svg>',
+  out: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H9M16 8l4 4-4 4M20 12H9"/></svg>',
+  swap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h14l-3-3M20 16H6l3 3"/></svg>'
+};
+function isDarkNow() { const t = document.documentElement.getAttribute('data-theme'); return t ? t === 'dark' : !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); }
+function notifOn() { return 'Notification' in window && Notification.permission === 'granted' && lsGet('gasca_notif') !== '0'; }
+function pfRow(act, ico, label, sw) {
+  return '<button type="button" class="pf-row" data-act="' + act + '"' + (sw ? ' role="switch" aria-checked="' + (sw === 'on') + '"' : '') + '><span class="pf-i">' + PI[ico] + '</span><span class="pf-l">' + label + '</span>' +
+    (sw ? '<span class="pf-sw' + (sw === 'on' ? ' on' : '') + '"><i></i></span>' : '') + '</button>';
+}
+function renderPerfil(el) {
+  const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
-  const h = '<div class="pf-top"><span class="pf-av">' + TI.user + '</span><b>' + esc(S.name || 'Repartidor') + '</b><small>Repartidor' + (rn ? ' · ' + rn : '') + '</small></div>' +
-    '<div class="order"><div class="line"><span class="k">Teléfono</span><span class="v">' + (tel ? esc(tel) : 'No registrado') + '</span></div>' +
-    (S.email && S.email.indexOf('@clientes.gasca.app') < 0 ? '<div class="line"><span class="k">Correo</span><span class="v">' + esc(S.email) + '</span></div>' : '') +
-    '<div class="line"><span class="k">Cuenta</span><span class="v"><b>Aprobada ✓</b></span></div>' +
-    '<div class="line"><span class="k">Viajes entregados</span><span class="v"><b>' + nDone + '</b></span></div></div>' +
-    '<a class="btn ghost block" target="_blank" rel="noopener" href="' + esc(supportUrl('Hola, soy ' + (S.name || 'repartidor') + (rn ? ' (' + rn + ')' : '') + '. Necesito ayuda con Gasca.')) + '">💬 Hablar con soporte</a>' +
-    (opts ? '<button class="btn ghost block" type="button" data-act="pf-switch">🔁 Cambiar de perfil</button>' : '') +
-    '<button class="btn danger block" type="button" data-act="signout" id="pfOut">Cerrar sesión</button>';
+  const h = pfRow('pf-dark', 'moon', 'Modo oscuro', isDarkNow() ? 'on' : 'off') + pfRow('pf-notif', 'bell', 'Notificaciones', notifOn() ? 'on' : 'off') +
+    pfRow('pf-pass', 'lock', 'Cambiar contraseña') + pfRow('pf-terms', 'list', 'Términos y condiciones') + pfRow('pf-priv', 'shield', 'Política de privacidad') +
+    (opts ? pfRow('pf-switch', 'swap', 'Cambiar de perfil') : '') + '<button type="button" class="pf-row" data-act="signout" id="pfOut"><span class="pf-i">' + PI.out + '</span><span class="pf-l">Cerrar sesión</span></button>';
   if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
 }
+function pfOverlay(html) {
+  let ov = document.getElementById('pfOv');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'pfOv'; document.body.appendChild(ov);
+    ov.addEventListener('click', (e) => { if (e.target.closest('[data-pf=close]') || e.target === ov) ov.hidden = true; });
+    ov.addEventListener('submit', async (e) => {
+      e.preventDefault(); const f = e.target; if (f.id !== 'pfPassForm') return;
+      const er = f.querySelector('.pf-er'), cur = f.cur.value, n1 = f.n1.value, n2 = f.n2.value;
+      const fail = (m) => { er.textContent = m; };
+      if (!cur) return fail('Escribe tu contraseña actual.');
+      if (n1.length < 6) return fail('La nueva debe tener mínimo 6 caracteres.');
+      if (n1 !== n2) return fail('Las contraseñas nuevas no son iguales.');
+      if (n1 === cur) return fail('La nueva debe ser distinta a la actual.');
+      const b = f.querySelector('button[type=submit]'); b.disabled = true; er.textContent = '';
+      try {
+        const u = auth.currentUser; await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, cur)); await updatePassword(u, n1);
+        if (S.pwFor === S.email) S.pw = n1; ov.hidden = true; toast('Contraseña cambiada ✓');
+      } catch (x) { const c = (x && x.code) || ''; fail(/wrong-password|invalid-credential|invalid-login/.test(c) ? 'Tu contraseña actual no es correcta.' : /too-many/.test(c) ? 'Muchos intentos. Espera unos minutos.' : /network/.test(c) ? 'Sin internet. Intenta de nuevo.' : 'No se pudo cambiar. Intenta de nuevo.'); b.disabled = false; }
+    });
+  }
+  ov.innerHTML = html; ov.hidden = false; return ov;
+}
+function pfText(title, txt) {
+  pfOverlay('<div class="pf-box"><div class="pf-bar"><b>' + esc(title) + '</b><button type="button" data-pf="close" class="pf-x">Cerrar</button></div><div class="reg pf-doc">' + regHtml(txt) + '</div></div>');
+}
+function pfPass() {
+  const eye = '<button type="button" class="pf-eye" tabindex="-1" aria-label="Ver" onclick="var i=this.previousElementSibling;i.type=i.type===\'password\'?\'text\':\'password\'">👁</button>';
+  pfOverlay('<form class="pf-box pf-form" id="pfPassForm" autocomplete="off"><div class="pf-bar"><b>Cambiar contraseña</b><button type="button" data-pf="close" class="pf-x">Cerrar</button></div>' +
+    '<label>Contraseña actual<span class="pf-f"><input name="cur" type="password" autocomplete="current-password">' + eye + '</span></label>' +
+    '<label>Contraseña nueva<span class="pf-f"><input name="n1" type="password" autocomplete="new-password">' + eye + '</span></label>' +
+    '<label>Repite la nueva<span class="pf-f"><input name="n2" type="password" autocomplete="new-password">' + eye + '</span></label>' +
+    '<p class="pf-er" role="alert"></p><button type="submit" class="btn primary block">Guardar contraseña</button></form>');
+}
+(function () { try { const t = localStorage.getItem('gasca_theme'); if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t); } catch (e) {} })();
 function renderRider() {
   const open = S.orders.filter((o) => o.estado === 'abierto').sort((a, b) => (a.creadoEn || 0) - (b.creadoEn || 0));
   const my = mine();
@@ -1213,7 +1256,7 @@ function renderRider() {
     sm.innerHTML = '<h2 class="section">Mi día</h2><div class="rider-head"><div class="today"><div><b>' + (S.walletReady ? cents(saldoC()) : '…') + '</b><small>Saldo</small></div><div><b>' + doneToday.length + '</b><small>Viajes hoy</small></div><div><b>' + pesos(earned) + '</b><small>Ganado hoy</small></div></div></div>' +
       '<div class="subhead">Acumulado</div><div class="rider-head"><div class="today"><div><b>' + done.length + '</b><small>Viajes en total</small></div><div><b>' + pesos(tot) + '</b><small>Ganado en total</small></div><div><b>' + cents(com) + '</b><small>Comisiones pagadas</small></div></div></div>';
   }
-  { const pf = pfDiv(); pf.hidden = S.tab !== 'perfil'; $('#riderHead').hidden = S.tab === 'perfil'; if (!pf.hidden) renderPerfil(pf, done.length); }
+  { const pf = pfDiv(); pf.hidden = S.tab !== 'perfil'; $('#riderHead').hidden = S.tab === 'perfil'; document.body.classList.toggle('pf-on', S.tab === 'perfil'); if (!pf.hidden) renderPerfil(pf); }
   $('#riderWallet').hidden = S.tab !== 'saldo';
   if (S.tab === 'saldo') renderWallet();
   if (S.tab === 'disp') {
@@ -1474,8 +1517,12 @@ const TI = {
   user: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="7.8" r="4.3"/><path d="M3.6 20.2c0-4 3.8-6.3 8.4-6.3s8.4 2.3 8.4 6.3c0 .5-.4.8-.8.8H4.4c-.4 0-.8-.3-.8-.8z"/></svg>'
 };
 (function () {
+  const bt = document.querySelector('.brand .bt'); if (bt && !document.getElementById('gDot')) { const d = document.createElement('span'); d.id = 'gDot'; const bn = bt.querySelector('.brandname'); bn.appendChild(d); }
   const st = document.createElement('style');
-  st.textContent = '.rider-bar #who{display:none!important}body.has-tabs main{padding-bottom:96px}' +
+  st.textContent = '#gDot{display:none;width:12px;height:12px;border-radius:50%;background:#1fa855;margin-left:9px;vertical-align:middle;box-shadow:0 0 0 3px rgba(31,168,85,.22)}#gDot.off{background:#d33;box-shadow:0 0 0 3px rgba(211,51,51,.22)}#gDot{}.pf-on #gDot{display:inline-block}.pf-on #whoName{display:none!important}.pf-on .top{position:sticky;top:0;z-index:20;background:var(--bg);padding-bottom:8px}' +
+    '#riderPerfil{gap:12px;padding-top:6px}.pf-row{display:flex;align-items:center;gap:16px;width:100%;min-height:62px;padding:12px 18px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;font:inherit;font-size:17px;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.06)}.pf-row:active{background:var(--surface2)}.pf-i{flex:none;width:26px;height:26px;display:grid;place-items:center}.pf-i svg{width:24px;height:24px}.pf-l{flex:1}.pf-sw{flex:none;width:52px;height:30px;border-radius:99px;background:#c9ced4;position:relative;transition:background .15s}.pf-sw i{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s}.pf-sw.on{background:#f8b980}.pf-sw.on i{background:#f08c00;transform:translateX(22px)}' +
+    '#pfOv{position:fixed;inset:0;z-index:9500;background:var(--bg);overflow:auto}#pfOv[hidden]{display:none}.pf-box{max-width:520px;margin:0 auto;padding:0 16px 40px}.pf-bar{display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg);padding:16px 0 10px;font-size:20px}.pf-x{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;padding:8px 16px;font:inherit;font-weight:700}.pf-doc{max-height:none!important;overflow:visible!important}.pf-form label{display:block;margin-top:14px;font-weight:700}.pf-f{display:flex;margin-top:6px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}.pf-f input{flex:1;min-width:0;border:0;background:none;color:var(--ink);font:inherit;font-size:17px;padding:13px 12px}.pf-eye{border:0;background:none;padding:0 14px;font-size:18px}.pf-er{color:var(--red);font-weight:700;min-height:22px;margin:10px 0}' +
+    '.rider-bar #who{display:none!important}body.has-tabs main{padding-bottom:96px}' +
     '.tabs-in.ico{gap:0}.tabs-in.ico .tab{position:relative;min-height:56px;padding:0;background:none!important;color:#a3a3a3;border-radius:14px}.tabs-in.ico .tab svg{width:30px;height:30px}.tabs-in.ico .tab[aria-selected="true"]{color:#f08c00}.tabs-in.ico .tab:active{background:rgba(0,0,0,.05)!important}' +
     '.tabs-in.ico .badge{position:absolute;top:3px;left:calc(50% + 8px);min-width:19px;height:19px;font-size:11px;padding:0 5px;background:#e8452c!important;color:#fff!important}' +
     '.pf-top{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0 4px}.pf-av{width:84px;height:84px;border-radius:50%;background:#f6b400;color:#16202a;display:grid;place-items:center}.pf-av svg{width:48px;height:48px}.pf-top b{font-size:24px;margin-top:6px}.pf-top small{font-size:15px;opacity:.7}';
@@ -1521,7 +1568,7 @@ function render() {
   if (v === 'rider') tabs = renderRider();
   S.menuTabs = (v === 'shop' || v === 'rider') ? tabs : null;
   if (v === 'shop') tabs = null;
-  document.body.classList.toggle('rider-bar', v === 'rider');
+  document.body.classList.toggle('rider-bar', v === 'rider'); if (v !== 'rider') document.body.classList.remove('pf-on');
   if (v === 'admin') { const list = renderAdmin(); S.adminMenu = list; adminHome(list); tabs = null; }
   renderTabs(tabs);
   $('#orderBtn').disabled = !canAct();
@@ -1614,6 +1661,16 @@ document.addEventListener('click', (e) => {
   else if (act === 'swr-close') { S.swr = false; render(); }
   else if (act === 'swr-pick') { S.swrRole = b.getAttribute('data-r'); render(); }
   else if (act === 'swr-go') switchRole();
+  else if (act === 'pf-dark') { const d = !isDarkNow(); document.documentElement.setAttribute('data-theme', d ? 'dark' : 'light'); lsSet('gasca_theme', d ? 'dark' : 'light'); render(); }
+  else if (act === 'pf-notif') {
+    if (!('Notification' in window)) toast('Tu teléfono no permite notificaciones aquí.');
+    else if (notifOn()) { lsSet('gasca_notif', '0'); render(); }
+    else if (Notification.permission === 'denied') toast('Están bloqueadas. Actívalas en los ajustes del navegador.');
+    else { lsSet('gasca_notif', '1'); Promise.resolve(Notification.requestPermission()).then(() => render()); }
+  }
+  else if (act === 'pf-pass') pfPass();
+  else if (act === 'pf-terms') pfText('Términos y condiciones', REG_TEXT.split('\n---\n')[0]);
+  else if (act === 'pf-priv') pfText('Política de privacidad', REG_TEXT.split('\n---\n')[1] || PRIV_TEXT);
   else if (act === 'pf-switch') { if (window.__gmOpen) window.__gmOpen(); }
   else if (act === 'ag-add') agAdd('ag');
   else if (act === 'sc-add') agAdd('sc', 'socio');
@@ -1829,8 +1886,8 @@ const PRIV_TEXT = "GASCA\n\nAVISO DE PRIVACIDAD INTEGRAL PARA NEGOCIOS Y USUARIO
 const PRIV_CONST = 'Declaro que he leído el Aviso de Privacidad Integral de GASCA y que entiendo cómo se usarán mis datos personales.\n\nSi capturo datos de otras personas (por ejemplo, de quien recibe un envío), cuento con su autorización para hacerlo.';
 const needV = () => (S.role === 'rider' ? REG_V : PRIV_V);
 function regDone() { return !!(S.regOk || (S.profile && S.profile.reglamentoV === needV())); }
-function regHtml() {
-  return (S.role === 'rider' ? REG_TEXT : PRIV_TEXT).split('\n').map((l) => {
+function regHtml(txt) {
+  return (txt || (S.role === 'rider' ? REG_TEXT : PRIV_TEXT)).split('\n').map((l) => {
     const t = l.trim(); if (!t) return '<br>';
     if (t === '---') return '<hr>';
     const head = /^(CAPÍTULO|Artículo)/.test(t) || (t === t.toUpperCase() && /[A-ZÁÉÍÓÚ]{3}/.test(t) && !/^\d/.test(t));
@@ -2312,7 +2369,7 @@ function cliSum() {
   function ring() { ensureAudio(); beep([988, 1319, 988, 1319]); buzz(); }
   function notify(txt) {
     try {
-      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      if (!('Notification' in window) || Notification.permission !== 'granted' || lsGet('gasca_notif') === '0') return;
       const opts = { body: txt, tag: 'gasca-pedido', renotify: true, vibrate: [300, 150, 300, 150, 300], icon: 'icon-192.png' };
       if (navigator.serviceWorker && navigator.serviceWorker.ready) navigator.serviceWorker.ready.then((r) => r.showNotification('🛵 Gasca: pedido nuevo', opts)).catch(() => { try { new Notification('🛵 Gasca: pedido nuevo', opts); } catch (e) {} });
       else new Notification('🛵 Gasca: pedido nuevo', opts);
