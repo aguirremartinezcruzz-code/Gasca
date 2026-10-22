@@ -1615,12 +1615,43 @@ if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navi
   if ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone) { hint.hidden = true; return; }
   let ev = null;
   window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault(); ev = e;
+    e.preventDefault(); ev = e; window.__instEv = e;
     hint.innerHTML = '<b>Instala Gasca en tu celular</b><button class="btn primary block" type="button" id="installBtn">Instalar Gasca</button>';
     const b = document.getElementById('installBtn');
-    if (b) b.addEventListener('click', async () => { try { ev.prompt(); await ev.userChoice; } catch (_) {} ev = null; hint.hidden = true; });
+    if (b) b.addEventListener('click', async () => { try { ev.prompt(); await ev.userChoice; } catch (_) {} ev = null; window.__instEv = null; hint.hidden = true; });
   });
   window.addEventListener('appinstalled', () => { hint.hidden = true; });
+})();
+
+/* QR de instalación: ?instalar=1 muestra "¿Quieres descargar la aplicación?" con Sí / Ahora no. */
+(function () {
+  let q = ''; try { q = new URLSearchParams(location.search).get('instalar') || ''; } catch (e) {}
+  if (!q) return;
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  const st = document.createElement('style');
+  st.textContent = '#instOv{position:fixed;inset:0;z-index:99999;background:linear-gradient(160deg,#f6b400,#ffd24d);display:flex;align-items:center;justify-content:center;padding:20px;font-family:inherit}#instOv .ic{background:#fff;border-radius:28px;padding:26px 22px;max-width:380px;width:100%;text-align:center;color:#16202a;box-shadow:0 12px 34px rgba(0,0,0,.25)}#instOv .lg{font-size:54px;line-height:1}#instOv h2{margin:10px 0 6px;font-size:26px}#instOv p{margin:6px 0 16px;font-size:17px;line-height:1.35}#instOv button{display:block;width:100%;min-height:56px;border-radius:16px;font:inherit;font-size:19px;font-weight:800;border:0;margin-top:10px}#instOv .yes{background:#16202a;color:#ffc61a}#instOv .no{background:#fff;color:#16202a;border:2px solid #cfd6de}#instOv .st{background:#f3f5f8;border-radius:14px;padding:12px;text-align:left;font-size:16px;line-height:1.4;margin-top:12px}';
+  document.head.appendChild(st);
+  const ov = document.createElement('div'); ov.id = 'instOv';
+  const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+  ov.innerHTML = '<div class="ic"><div class="lg">🛵</div><h2>Gasca</h2><div id="instBody"></div></div>';
+  document.body.appendChild(ov);
+  const body = ov.querySelector('#instBody'), close = () => ov.remove();
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const steps = () => ios
+    ? '<div class="st"><b>En iPhone:</b><br>1. Toca el botón <b>Compartir</b> (el cuadro con la flecha ↑) de Safari.<br>2. Elige <b>Agregar a pantalla de inicio</b>.<br>3. Toca <b>Agregar</b>.</div>'
+    : '<div class="st"><b>En Android:</b><br>1. Toca los <b>tres puntos ⋮</b> de arriba a la derecha.<br>2. Elige <b>Instalar app</b> o <b>Agregar a pantalla de inicio</b>.<br>3. Toca <b>Instalar</b>.</div>';
+  if (standalone) { body.innerHTML = '<p>Ya tienes Gasca instalada en este celular. 🎉</p><button class="yes" type="button" id="instNo">Continuar</button>'; body.querySelector('#instNo').onclick = close; return; }
+  body.innerHTML = '<p><b>¿Quieres descargar la aplicación Gasca?</b><br>Queda en tu pantalla de inicio, como cualquier app.</p><button class="yes" type="button" id="instYes">Sí, descargar</button><button class="no" type="button" id="instNo">Ahora no</button>';
+  body.querySelector('#instNo').onclick = close;
+  body.querySelector('#instYes').onclick = async () => {
+    const e = window.__instEv;
+    if (e) {
+      try { e.prompt(); const r = await e.userChoice; window.__instEv = null; if (r && r.outcome === 'accepted') { body.innerHTML = '<p>¡Listo! Gasca se está instalando. Búscala en tu pantalla de inicio. 🎉</p><button class="yes" type="button" id="instOk">Continuar</button>'; body.querySelector('#instOk').onclick = close; return; } } catch (_) {}
+    }
+    body.innerHTML = '<p>Sigue estos pasos para instalarla:</p>' + steps() + '<button class="yes" type="button" id="instOk">Entendido</button>';
+    body.querySelector('#instOk').onclick = close;
+  };
+  window.addEventListener('appinstalled', close);
 })();
 
 /* Actualización automática: si hay una versión nueva, la app se recarga sola cuando no estorba. */
