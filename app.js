@@ -156,6 +156,7 @@ const canTake = (o) => S.walletReady && !!S.wallet && saldoC() >= comC(o);
 /* ---------- verificación de documentos ---------- */
 const VER = {
   rider: [
+    { k: 'selfie', t: 'Selfie', h: 'Una foto de tu cara, de frente y con buena luz. Sin lentes oscuros ni gorra. Es la foto que verán los negocios.', selfie: true },
     { k: 'ine', t: 'INE por el frente', h: 'Foto de tu INE por el frente. Que se vean tu foto y tus datos completos.' },
     { k: 'ine_atras', t: 'INE por atrás', h: 'Foto de tu INE por la parte de atrás. Que se lea todo.' },
     { k: 'licencia', t: 'Licencia de conducir', h: 'Por el frente, vigente y legible.' },
@@ -477,6 +478,7 @@ function startRole() {
     listen(roleUnsubs, doc(db, 'config', 'pago'), (s) => { S.pago = (s.exists() && s.data().texto) || ''; render(); });
     listen(roleUnsubs, doc(db, 'config', 'zonas'), (s) => { S.zonas = (s.exists() && Array.isArray(s.data().zonas)) ? s.data().zonas : []; S.radioKm = (s.exists() && Number(s.data().radioKm)) || 3; mergeOrders(); syncSheet(); render(); });
     listen(roleUnsubs, doc(db, 'config', 'tarifas'), (s) => { S.tarifas = s.exists() ? s.data() : null; });
+    roleUnsubs.push(onSnapshot(doc(db, 'fotosrep', S.uid), (sn) => { S.myThumb = sn.exists() ? (sn.data().img || '') : ''; render(); }, () => {}));
     listen(roleUnsubs, query(collection(db, 'ofertas'), where('driverId', '==', S.uid)), onOfertas);
     roleUnsubs.push(onSnapshot(query(collection(db, 'retiros'), where('driverId', '==', S.uid)), (snap) => { const m = Object.assign({}, S.retiros || {}); snap.docs.forEach((d) => { const v = d.data(); if (v && v.codigo) m[d.id] = v.codigo; }); S.retiros = m; render(); }, () => { S.retFail = true; render(); }));
     roleUnsubs.push(onSnapshot(query(collection(db, 'liberados'), where('driverId', '==', S.uid)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = (d.data() || {}).driverId || '-'; }); S.libres = m; render(); }, () => { S.retFail = true; render(); }));
@@ -639,6 +641,13 @@ function offerBtns(o) {
   const t = Number(o.tarifa), busy = S.busy.has('of' + o.id);
   return '<p class="hint" style="margin:8px 0 4px">¿Muy poco? Pide más:</p><div class="actions">' + [5, 10].map((n) => '<button class="btn ghost" type="button" data-act="counter" data-id="' + esc(o.id) + '" data-m="' + (t + n) + '"' + (busy || !canAct() ? ' disabled' : '') + '>Pedir ' + pesos(t + n) + '</button>').join('') + '</div>';
 }
+S.drvFoto = S.drvFoto || {};
+function drvImg(id) {
+  if (!id) return '';
+  if (!(id in S.drvFoto)) { S.drvFoto[id] = ''; getDoc(doc(db, 'fotosrep', id)).then((sn) => { const v = sn.exists() ? sn.data().img : ''; if (typeof v === 'string' && /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(v) && v.length < 40000) { S.drvFoto[id] = v; render(); } }).catch(() => {}); }
+  return S.drvFoto[id] || '';
+}
+const drvAvatar = (id) => { const im = drvImg(id); return im ? '<img class="drv" alt="Foto del repartidor" src="' + im + '">' : ''; };
 function offersFor(o) {
   const l = S.ofertas.filter((x) => x.orderId === o.id && x.estado === 'pendiente');
   if (o.estado !== 'abierto' || !l.length) return '';
@@ -828,7 +837,7 @@ function UI_goMap(id) { try { const u = window.__gmap; if (u) { u.fitKey = ''; }
     '.oc-h2{font-weight:800;font-size:17px;margin-top:4px}.oc-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}.oc-btns.two{grid-template-columns:1fr 1fr}.oc-b{display:flex;align-items:center;justify-content:center;gap:10px;min-height:58px;padding:8px 10px;border:1.5px solid var(--line);background:var(--surface);color:var(--amber-fg);border-radius:14px;font-weight:800;font-size:16px;text-decoration:none;text-align:left}.oc-b.flat{border:0;background:none;justify-content:flex-start}.oc-b.wide{width:100%;justify-content:center}.oc-b svg{flex:none}' +
     '.oc-foot{padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line)}' +
     '.sl{position:relative;height:66px;border-radius:99px;background:color-mix(in srgb,#f08c00 22%,var(--surface));border:2.5px solid #f08c00;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;overflow:hidden}.sl::before{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--p,0%);background:rgba(240,140,0,.35)}.sl-t{position:relative;font-weight:800;font-size:18px;color:#a8530a;padding-left:56px}.sl-h{position:absolute;left:4px;top:4px;bottom:4px;width:54px;border-radius:50%;background:#f08c00;display:grid;place-items:center;touch-action:none;cursor:grab;box-shadow:0 2px 6px rgba(0,0,0,.3)}.sl:not(.drag) .sl-h{transition:transform .2s}.sl.lock{border-color:#b8b8b8;background:var(--surface2)}.sl.lock .sl-h{background:#b0b0b0;cursor:not-allowed}.sl.lock .sl-t{color:var(--muted);font-size:15.5px}' +
-    '.gm-ord{position:absolute;right:12px;bottom:96px;border:0;background:#16202a;color:#fff;border-radius:99px;padding:11px 18px;font-weight:800;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,.45)}.gm-ord[hidden]{display:none}.gm-attr{bottom:70px!important}.gm-chip{background:#fff4d6!important;border:1.5px solid #f0b429}' +
+    '.drv{width:46px;height:46px;border-radius:50%;object-fit:cover;flex:none;border:2px solid var(--line)}.status:has(.drv){display:flex;align-items:center;gap:10px}.pf-av{display:flex;align-items:center;gap:14px;padding:6px 4px}.pf-pic{width:76px;height:76px;border-radius:50%;background:var(--surface);border:2px solid var(--line);display:grid;place-items:center;overflow:hidden;font-size:30px}.pf-pic img{width:100%;height:100%;object-fit:cover}.pf-avt{font-weight:800;color:var(--amber-fg);font-size:16px}.gm-ord{position:absolute;right:12px;bottom:96px;border:0;background:#16202a;color:#fff;border-radius:99px;padding:11px 18px;font-weight:800;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,.45)}.gm-ord[hidden]{display:none}.gm-attr{bottom:70px!important}.gm-chip{background:#fff4d6!important;border:1.5px solid #f0b429}' +
     '.mp-ver{margin-top:10px;width:100%;border:1.5px solid var(--line);background:var(--surface);color:var(--amber-fg);border-radius:12px;padding:10px;font-weight:800;font-size:15px}.lb-box{margin-top:6px}';
   document.head.appendChild(st);
 })();
@@ -951,6 +960,20 @@ function shrink(file) {
     im.src = url;
   });
 }
+function thumbOf(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), im = new Image();
+    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('img')); };
+    im.onload = () => {
+      try {
+        const w = im.naturalWidth, h = im.naturalHeight, m = Math.min(w, h), cv = document.createElement('canvas'); cv.width = cv.height = 160;
+        const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, 160, 160); cx.drawImage(im, (w - m) / 2, (h - m) / 2, m, m, 0, 0, 160, 160);
+        URL.revokeObjectURL(url); resolve(cv.toDataURL('image/jpeg', 0.7));
+      } catch (e) { URL.revokeObjectURL(url); reject(e); }
+    };
+    im.src = url;
+  });
+}
 async function uploadFoto(key, file) {
   if (!file || !S.uid) return;
   if (!/^image\//.test(file.type || '')) { toast('Elige una foto, no otro tipo de archivo.'); return; }
@@ -958,6 +981,7 @@ async function uploadFoto(key, file) {
   try {
     const img = await shrink(file);
     await setDoc(doc(db, 'docs', S.uid, 'fotos', key), { key, img, creadoEn: Date.now() });
+    if (key === 'selfie') { try { const th = await thumbOf(file); await setDoc(doc(db, 'fotosrep', S.uid), { img: th, creadoEn: Date.now() }); S.myThumb = th; } catch (e) { console.warn('miniatura', e); } }
     toast('Foto guardada.');
   } catch (e) { toast('No se pudo subir la foto. Intenta con otra.'); }
   delete S.uploading[key]; render();
@@ -1197,7 +1221,7 @@ function renderVerify() {
   }
   if (st === 'eliminado' && S.swr) { renderSwitch(el); return; }
   const a = S.myAprob;
-  let h = headH + '<p class="lede">' + (S.role === 'rider' ? 'Para recibir pedidos necesitamos 6 fotos. Solo sirven para confirmar quién eres.' : isCli(S.profile) ? 'Para pedir mandaditos necesitamos 3 fotos: tu selfie y tu INE por los dos lados. Solo sirven para confirmar quién eres.' : 'Para pedir motos necesitamos 3 fotos. Solo sirven para confirmar tu negocio.') + '</p>';
+  let h = headH + '<p class="lede">' + (S.role === 'rider' ? 'Para recibir pedidos necesitamos 7 fotos. Solo sirven para confirmar quién eres.' : isCli(S.profile) ? 'Para pedir mandaditos necesitamos 3 fotos: tu selfie y tu INE por los dos lados. Solo sirven para confirmar quién eres.' : 'Para pedir motos necesitamos 3 fotos. Solo sirven para confirmar tu negocio.') + '</p>';
   if (st === 'eliminado') h += '<div class="banner"><b>Tu cuenta fue dada de baja.</b> Si quieres volver a usar Gasca, revisa tus documentos y envíalos otra vez. La administración los revisará con atención.</div><button class="btn ghost block" type="button" data-act="swr-open" style="margin:10px 0">Quiero entrar con otro perfil</button>';
   if (st === 'rechazado') h += '<div class="banner"><b>No se aprobaron tus documentos.</b> ' + esc(a && a.motivo ? a.motivo : 'Revisa las fotos y súbelas de nuevo.') + '</div>';
   let ready = 0;
@@ -1227,8 +1251,8 @@ function renderVerify() {
 function shopCard(o) {
   let s = '';
   if (o.estado === 'abierto') s = '<div class="status"><span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>Buscando repartidor</div>';
-  else if (o.estado === 'asignado') s = '<div class="status"><b>' + esc(o.driverName || 'Un repartidor') + '</b> va por el pedido · ' + ago(o.asignadoEn || o.creadoEn) + '</div>';
-  else if (o.estado === 'recogido') s = '<div class="status"><b>' + esc(o.driverName || 'El repartidor') + '</b> ya salió con el pedido</div>';
+  else if (o.estado === 'asignado') s = '<div class="status">' + drvAvatar(o.driverId) + '<span><b>' + esc(o.driverName || 'Un repartidor') + '</b> va por el pedido · ' + ago(o.asignadoEn || o.creadoEn) + '</span></div>';
+  else if (o.estado === 'recogido') s = '<div class="status">' + drvAvatar(o.driverId) + '<span><b>' + esc(o.driverName || 'El repartidor') + '</b> ya salió con el pedido</span></div>';
   const cod = S.codes[o.id];
   if (cod && (o.estado === 'abierto' || o.estado === 'asignado' || o.estado === 'recogido')) {
     const wa = waUrl(o.tel);
@@ -1372,7 +1396,7 @@ function renderEnCurso(el, list) {
       '<div class="mp-hint">Toca para ver la orden de compra</div></article>';
   };
   const h = list.length ? list.map(card).join('') : '<p class="hint" style="text-align:center;margin-top:30px">No tienes pedidos en curso.</p>';
-  const w = '<div style="padding-top:22px">' + h + '</div>';
+  const w = '<div style="padding-top:22px"><h2 class="mp-title">Pedidos en curso</h2>' + h + '</div>';
   if (el.dataset.h !== w) { el.innerHTML = w; el.dataset.h = w; }
 }
 function mpDiv() {
@@ -1383,7 +1407,8 @@ function mpDiv() {
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
-  const h = pfRow('pf-dark', 'moon', 'Modo oscuro', isDarkNow() ? 'on' : 'off') + pfRow('pf-notif', 'bell', 'Notificaciones', notifOn() ? 'on' : 'off') +
+  const av = '<label class="pf-av"><span class="pf-pic">' + (S.myThumb ? '<img alt="Mi foto" src="' + S.myThumb + '">' : '<span class="pf-ph">📷</span>') + '</span><span class="pf-avt">' + (S.myThumb ? 'Cambiar mi foto' : 'Subir mi selfie') + '</span><input class="sr" type="file" accept="image/*" capture="user" data-pfoto="1"></label>';
+  const h = '<h2 class="mp-title">Mi perfil</h2>' + av + pfRow('pf-dark', 'moon', 'Modo oscuro', isDarkNow() ? 'on' : 'off') + pfRow('pf-notif', 'bell', 'Notificaciones', notifOn() ? 'on' : 'off') +
     pfRow('pf-pass', 'lock', 'Cambiar contraseña') + pfRow('pf-terms', 'list', 'Términos y condiciones') + pfRow('pf-priv', 'shield', 'Política de privacidad') +
     (opts ? pfRow('pf-switch', 'swap', 'Cambiar de perfil') : '') + '<button type="button" class="pf-row" data-act="signout" id="pfOut"><span class="pf-i">' + PI.out + '</span><span class="pf-l">Cerrar sesión</span></button>';
   if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
@@ -1452,7 +1477,7 @@ function renderRider() {
     const nWeek = done.filter((o) => (o.entregadoEn || o.creadoEn || 0) >= wk.getTime()).length;
     const fecha = new Date().toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).replace(/[.,]/g, '').replace(/^./, (c) => c.toUpperCase());
     const low = S.walletReady && saldoC() < 2000;
-    let h = '<div class="vj-date">' + esc(fecha) + '</div>' +
+    let h = '<h2 class="mp-title">Mi resumen</h2><div class="vj-date" style="padding-top:0">' + esc(fecha) + '</div>' +
       '<div class="vj-3"><div><b>' + doneToday.length + '</b><small>Entregas hoy</small></div><div><b>' + nWeek + '</b><small>Entregas de la semana</small></div><div><b>' + done.length + '</b><small>Totales</small></div></div>' +
       '<div class="vj-dia"><b class="vj-dt">Ganancias de hoy</b><div><span><small>Ganancia neta</small><b>' + m2(doneToday.reduce((t, o) => t + (Number(o.tarifa) || 0) - comC(o) / 100, 0)) + '</b></span><span><small>Comisión retenida</small><b class="vj-ret">' + m2(doneToday.reduce((t, o) => t + comC(o) / 100, 0)) + '</b></span></div></div>' +
       '<div class="vj-saldo' + (low ? ' low' : '') + '"><small>Saldo disponible</small><b>' + (S.walletReady ? cents(saldoC()) : '…') + '</b>' + (low ? '<span>Saldo bajo. Recarga para seguir aceptando pedidos.</span>' : '') + '<button class="btn primary block" type="button" data-act="vj-recharge">Recargar saldo</button></div>';
@@ -1818,7 +1843,10 @@ document.addEventListener('input', (e) => { if (e.target && e.target.id === 'a-m
 document.addEventListener('change', (e) => {
   const t = e.target;
   if (!t || !t.getAttribute) return;
-  if (t.getAttribute('data-foto')) {
+  if (t.getAttribute('data-pfoto')) {
+    const f = t.files && t.files[0]; t.value = '';
+    if (f) uploadFoto('selfie', f);
+  } else if (t.getAttribute('data-foto')) {
     const f = t.files && t.files[0], k = t.getAttribute('data-foto'); t.value = '';
     if (f) uploadFoto(k, f);
   } else if (t.getAttribute('data-ticket')) {
