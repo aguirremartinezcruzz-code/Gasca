@@ -1852,7 +1852,7 @@ document.addEventListener('click', (e) => {
       '<button type="button" class="gm-loc" id="gmLoc" aria-label="Centrar en mi ubicación">' + IC.loc + '</button>' +
       '<div class="gm-chip" id="gmChip" hidden></div>' +
       '<button type="button" class="gm-pw" id="onlineSw" data-act="online" role="switch" aria-checked="false">' + IC.pw + '<b id="gmPwT"></b></button>' +
-      '<div class="gm-stats"><span class="gm-ic">' + IC.coin + '</span><b id="gmHoy"></b><em id="gmSem"></em></div>' +
+      '<div class="gm-stats"><span class="gm-ic">' + IC.coin + '</span><b id="gmHoy"></b></div>' +
       '<a class="gm-attr" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a></div>';
     ref.parentNode.insertBefore(w, ref); UI.wrap = w;
     UI.map = new GMap(w.querySelector('.gm-canvas'));
@@ -1865,7 +1865,7 @@ document.addEventListener('click', (e) => {
   function put(el, t) { if (el && el.textContent !== t) el.textContent = t; }
   function sizeIt() {
     const w = UI.wrap, tabs = document.getElementById('tabs'), top = w.getBoundingClientRect().top + window.scrollY, th = tabs && !tabs.hidden ? tabs.offsetHeight : 0;
-    const h = Math.max(380, Math.round(window.innerHeight - top - th - 16));
+    const h = Math.max(380, Math.round(window.innerHeight - top - th - 8));
     if (w.style.height !== h + 'px') { w.style.height = h + 'px'; UI.map.draw(); }
   }
   const llTxt = (p) => p[0].toFixed(5) + ',' + p[1].toFixed(5);
@@ -1901,7 +1901,7 @@ document.addEventListener('click', (e) => {
     pw.setAttribute('aria-checked', on ? 'true' : 'false'); pw.classList.toggle('on', on);
     const net = (o) => (Number(o.tarifa) || 0) - comC(o) / 100, wk = new Date(); wk.setHours(0, 0, 0, 0); wk.setDate(wk.getDate() - ((wk.getDay() + 6) % 7));
     const hoy = ctx.doneToday.reduce((t, o) => t + net(o), 0), sem = ctx.done.filter((o) => (o.entregadoEn || o.creadoEn || 0) >= wk.getTime()).reduce((t, o) => t + net(o), 0);
-    put(document.getElementById('gmHoy'), 'Hoy ' + m2(hoy) + ' · ' + ctx.doneToday.length + (ctx.doneToday.length === 1 ? ' entrega' : ' entregas')); put(document.getElementById('gmSem'), 'Semana $' + Math.round(sem).toLocaleString('es-MX'));
+    put(document.getElementById('gmHoy'), 'Hoy ' + m2(hoy) + ' · ' + ctx.doneToday.length + (ctx.doneToday.length === 1 ? ' entrega' : ' entregas'));
     // mi posición
     if (on && S.pos) {
       map.setMarker('me', S.pos.lat, S.pos.lon, mkMe, 'me');
@@ -1930,7 +1930,7 @@ document.addEventListener('click', (e) => {
   window.__mapSync = sync; window.__gmap = UI;
   window.addEventListener('resize', () => { try { if (UI.wrap && !UI.wrap.hidden) sizeIt(); } catch (e) {} });
   const st = document.createElement('style');
-  st.textContent = '#riderMap{position:relative;margin:8px 0 14px;border-radius:22px;overflow:hidden;background:#0a3047;box-shadow:0 2px 10px rgba(0,0,0,.25);isolation:isolate}#riderMap[hidden]{display:none}' +
+  st.textContent = '#riderMap{position:relative;margin:4px -13px 8px;border-radius:16px;overflow:hidden;background:#0a3047;box-shadow:0 2px 10px rgba(0,0,0,.25);isolation:isolate}#riderMap[hidden]{display:none}' +
     '.gm-canvas{position:absolute;inset:0;touch-action:none;overflow:hidden;cursor:grab;background:#0a3047}.gm-tiles,.gm-mk{position:absolute;inset:0}.gm-t{position:absolute;left:0;top:0;max-width:none;user-select:none;-webkit-user-drag:none;filter:invert(1) hue-rotate(188deg) brightness(.85) contrast(.95) saturate(.5);will-change:transform}' +
     '.gm-tint{position:absolute;inset:0;background:#0d5a80;mix-blend-mode:screen;opacity:.5;pointer-events:none}.gm-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}.gm-rc{fill:none;stroke:#0b1620;stroke-width:11;stroke-linecap:round;stroke-linejoin:round;opacity:.75}.gm-rl{fill:none;stroke:#f6a000;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}' +
     '.gm-m{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}.gm-me i{position:absolute;left:-11px;top:-11px;width:22px;height:22px;border-radius:50%;background:#2f7df6;border:3.5px solid #fff;box-shadow:0 0 0 8px rgba(47,125,246,.28),0 2px 6px rgba(0,0,0,.5)}' +
