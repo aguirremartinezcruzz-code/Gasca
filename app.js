@@ -1274,12 +1274,8 @@ function renderRider() {
   const av = $('#riderAvail'), tr = $('#riderTrips');
   av.hidden = S.tab !== 'disp'; tr.hidden = S.tab !== 'viajes';
   const sm = $('#riderSum'); sm.hidden = S.tab !== 'resumen';
-  if (S.tab === 'resumen') {
-    const tot = done.reduce((a, o) => a + (Number(o.tarifa) || 0), 0), com = S.movs.filter((m) => m.tipo === 'comision').reduce((a, m) => a + Math.abs(Number(m.montoC) || 0), 0);
-    sm.innerHTML = '<h2 class="section">Mi día</h2><div class="rider-head"><div class="today"><div><b>' + (S.walletReady ? cents(saldoC()) : '…') + '</b><small>Saldo</small></div><div><b>' + doneToday.length + '</b><small>Viajes hoy</small></div><div><b>' + pesos(earned) + '</b><small>Ganado hoy</small></div></div></div>' +
-      '<div class="subhead">Acumulado</div><div class="rider-head"><div class="today"><div><b>' + done.length + '</b><small>Viajes en total</small></div><div><b>' + pesos(tot) + '</b><small>Ganado en total</small></div><div><b>' + cents(com) + '</b><small>Comisiones pagadas</small></div></div></div>';
-  }
-  { const pf = pfDiv(); pf.hidden = S.tab !== 'perfil'; $('#riderHead').hidden = ['perfil', 'viajes', 'saldo'].includes(S.tab); document.body.classList.toggle('pf-on', ['perfil', 'viajes', 'saldo'].includes(S.tab)); if (!pf.hidden) renderPerfil(pf); }
+  if (S.tab === 'resumen') sm.innerHTML = ''; /* pantalla limpia por ahora */
+  { const pf = pfDiv(); pf.hidden = S.tab !== 'perfil'; $('#riderHead').hidden = ['perfil', 'viajes', 'saldo', 'resumen'].includes(S.tab); document.body.classList.toggle('pf-on', ['perfil', 'viajes', 'saldo', 'resumen'].includes(S.tab)); if (!pf.hidden) renderPerfil(pf); }
   { const mp = mpDiv(); mp.hidden = S.tab !== 'saldo'; if (!mp.hidden) renderMisPedidos(mp, my); }
   { const showW = S.tab === 'saldo' && (S.rechargeOpen || S.recargas.some((r) => r.estado !== 'confirmada')); /* Saldo: limpia; solo se ve al recargar o con una recarga pendiente */
     $('#riderWallet').hidden = !showW; if (showW) renderWallet(); }
