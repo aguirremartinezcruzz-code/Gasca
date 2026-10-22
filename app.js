@@ -1256,9 +1256,9 @@ function renderRider() {
     sm.innerHTML = '<h2 class="section">Mi día</h2><div class="rider-head"><div class="today"><div><b>' + (S.walletReady ? cents(saldoC()) : '…') + '</b><small>Saldo</small></div><div><b>' + doneToday.length + '</b><small>Viajes hoy</small></div><div><b>' + pesos(earned) + '</b><small>Ganado hoy</small></div></div></div>' +
       '<div class="subhead">Acumulado</div><div class="rider-head"><div class="today"><div><b>' + done.length + '</b><small>Viajes en total</small></div><div><b>' + pesos(tot) + '</b><small>Ganado en total</small></div><div><b>' + cents(com) + '</b><small>Comisiones pagadas</small></div></div></div>';
   }
-  { const pf = pfDiv(); pf.hidden = S.tab !== 'perfil'; $('#riderHead').hidden = S.tab === 'perfil' || S.tab === 'viajes'; document.body.classList.toggle('pf-on', S.tab === 'perfil' || S.tab === 'viajes'); if (!pf.hidden) renderPerfil(pf); }
-  $('#riderWallet').hidden = S.tab !== 'saldo';
-  if (S.tab === 'saldo') renderWallet();
+  { const pf = pfDiv(); pf.hidden = S.tab !== 'perfil'; $('#riderHead').hidden = ['perfil', 'viajes', 'saldo'].includes(S.tab); document.body.classList.toggle('pf-on', ['perfil', 'viajes', 'saldo'].includes(S.tab)); if (!pf.hidden) renderPerfil(pf); }
+  { const showW = S.tab === 'saldo' && (S.rechargeOpen || S.recargas.some((r) => r.estado !== 'confirmada')); /* Saldo: limpia; solo se ve al recargar o con una recarga pendiente */
+    $('#riderWallet').hidden = !showW; if (showW) renderWallet(); }
   if (S.tab === 'disp') {
     const rd = !S.online ? ['Estás desconectado', 'Enciende "En línea" arriba para recibir pedidos.'] : open.length ? [open.length + (open.length === 1 ? ' pedido disponible' : ' pedidos disponibles'), 'Primero el que llegó antes.'] : ['Esperando pedidos…', 'Deja Gasca abierta. Suena un aviso cuando llegue uno.'];
     const radar = '<div class="radar' + (S.online ? ' on' : '') + (open.length ? ' mini' : '') + '"><div class="rings"><i></i><i></i><i></i><span class="sweep"></span><span class="core"><svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="23" r="4"/><circle cx="25" cy="23" r="4"/><path d="M8 23l5-9h6l3 9M19 14l-2-5h4M13 14H9"/></svg></span></div><b>' + rd[0] + '</b><small>' + rd[1] + '</small></div>';
