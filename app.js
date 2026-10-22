@@ -2511,11 +2511,11 @@ function delivNotice(o) {
     '#authRoles .rl-ic{position:absolute;left:16px;top:50%;transform:translateY(-50%);width:54px;height:54px;border-radius:16px;display:grid;place-items:center;font-size:30px}' +
     '#authRoles input:checked+.card-r{border-color:var(--rc,#f6b400)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--rc,#f6b400) 30%,transparent)}' +
     '#authRoles .rl-gone{display:none!important}#authRoles .role{animation:rlin .35s ease both}#authRoles .role:nth-of-type(2){animation-delay:.07s}#authRoles .role:nth-of-type(3){animation-delay:.14s}@keyframes rlin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}' +
-    '#rlChange{display:none;margin:0;text-align:left;background:none;border:0;font-weight:700;font-size:16px;text-decoration:underline;padding:8px 0;color:inherit}.rl-chosen #rlChange{display:inline-block}' +
+    '#rlChange{display:none;margin:0 0 4px;text-align:left;background:#fff;border:2px solid var(--line,#cfd6de);border-radius:14px;font-weight:800;font-size:16px;padding:10px 18px;min-height:46px;color:inherit;box-shadow:0 2px 6px rgba(20,30,45,.08)}#rlChange:active{transform:scale(.97)}.rl-chosen #rlChange{display:inline-flex;align-items:center;gap:8px;width:auto;align-self:flex-start;justify-self:start}.rl-chosen .legend{display:none}' +
     '.rl-pick #fName,.rl-pick #fAddr,.rl-pick #fTel,.rl-pick #fEmail,.rl-pick #fPass,.rl-pick #authHint,.rl-pick #authBtn{display:none!important}' +
     '#authForm.rl-pick #rlWait{display:block}#rlWait{display:none;text-align:center;font-weight:700;opacity:.65;margin:6px 0}@media (prefers-reduced-motion:reduce){#authRoles .role{animation:none}}';
   document.head.appendChild(st);
-  fs.insertAdjacentHTML('beforeend', '<button type="button" id="rlChange">← Cambiar opción</button>');
+  fs.insertAdjacentHTML('beforeend', '<button type="button" id="rlChange"><span aria-hidden="true">←</span> Regresar</button>');
   fs.insertAdjacentHTML('afterend', '<p id="rlWait">👆 Toca una opción para continuar</p>');
   fs.querySelectorAll('label.role').forEach((l) => {
     const v = l.querySelector('input').value, c = COLOR[v] || '#f6b400', card = l.querySelector('.card-r');
@@ -2528,7 +2528,7 @@ function delivNotice(o) {
     const v = roleVal();
     af.classList.toggle('rl-pick', on && !v);
     fs.classList.toggle('rl-chosen', on && !!v);
-    fs.querySelectorAll('label.role').forEach((l) => l.classList.toggle('rl-gone', on && !!v && l.querySelector('input').value !== v));
+    fs.querySelectorAll('label.role').forEach((l) => l.classList.toggle('rl-gone', on && !!v));
     if (on && !window.__aliasProf) { const lede = $('#authLede'); lede.textContent = v ? LEDE[v] : 'Elige cómo quieres usar Gasca. Solo toma un minuto.'; }
   }
   document.getElementById('rlChange').addEventListener('click', () => {
