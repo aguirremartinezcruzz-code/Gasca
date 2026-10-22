@@ -270,7 +270,7 @@ function setMode(m) {
     document.querySelector('label[for="a-email"]').textContent = m === 'login' ? 'Correo o teléfono' : 'Correo';
     if (cl) { $('#lblName').textContent = 'Tu nombre completo'; $('#a-name').placeholder = 'Ej. María López'; }
     if (rp) { $('#lblName').textContent = 'Tu nombre completo (como aparece en tu INE)'; $('#a-name').placeholder = 'Ej. Juan Pérez López'; }
-    if (rp) $('#authHint').textContent = 'Entras con tu teléfono y tu contraseña. Después te pediremos tu INE por los dos lados, tu licencia por el frente, tu tarjeta de circulación y fotos de tu moto y su placa.';
+    if (rp) { $('#authHint').textContent = ''; $('#authHint').hidden = true; }
     else if (cl) $('#authHint').textContent = 'Después te pediremos una selfie y tu INE por los dos lados para aprobar tu cuenta.';
     else $('#authHint').textContent = 'Después te pediremos fotos de tus documentos para aprobar tu cuenta.';
     if (m === 'login') $('#a-email').placeholder = 'correo o teléfono de 10 dígitos'; else $('#a-email').placeholder = 'tucorreo@ejemplo.com'; }
