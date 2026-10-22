@@ -465,6 +465,24 @@ function mergeOrders() {
 }
 const orderDocs = (snap) => snap.docs.map((d) => d.data()).filter((o) => o && o.estado && o.id);
 
+function bonoNotice(docs) {
+  const k = 'gasca_bonos_' + S.uid; let seen = []; try { seen = JSON.parse(lsGet(k) || '[]'); } catch (e) {}
+  const fresh = docs.filter((d) => (d.data() || {}).tipo === 'bono' && seen.indexOf(d.id) < 0);
+  if (!fresh.length) return;
+  lsSet(k, JSON.stringify(seen.concat(fresh.map((d) => d.id)).slice(-200)));
+  const tot = fresh.reduce((t, d) => t + (Number(d.data().montoC) || 0), 0) / 100;
+  const msg = 'Se agregaron ' + pesos(tot) + ' por recomendación';
+  try { beep([660, 880, 1175]); buzz(); } catch (e) {} toast(msg + '. ¡Gracias por invitar!');
+  try { if ('Notification' in window && Notification.permission === 'granted' && navigator.serviceWorker) navigator.serviceWorker.ready.then((r) => r.showNotification('Gasca', { body: msg, icon: 'icon-192.png' })).catch(() => {}); } catch (e) {}
+}
+async function claimRef() {
+  const ref = Number(lsGet('gasca_ref')); const k = 'gasca_refok_' + S.uid;
+  if (!ref || lsGet(k) || S.role !== 'rider' || !S.uid) return;
+  const born = (S.profile && S.profile.creadoEn) || 0;
+  if (!born || Date.now() - born > 14 * 86400000 || ref === myRepNo()) { lsSet(k, '1'); return; }
+  try { await setDoc(doc(db, 'referidos', S.uid), { refNo: ref, nombre: String(S.name || 'Repartidor').slice(0, 60), estado: 'pendiente', creadoEn: Date.now() }); } catch (e) { return; }
+  lsSet(k, '1');
+}
 function startRole() {
   S.roleOn = true;
   if (S.role === 'rider') {
@@ -473,7 +491,8 @@ function startRole() {
     listen(roleUnsubs, query(collection(db, 'orders'), where('estado', '==', 'abierto')), onOpenOrders);
     listen(roleUnsubs, query(collection(db, 'orders'), where('driverId', '==', S.uid)), onMyOrders);
     listen(roleUnsubs, doc(db, 'wallets', S.uid), (s) => { S.wallet = s.exists() ? s.data() : null; S.walletReady = true; if (S.online) queueOpen(); syncSheet(); render(); });
-    listen(roleUnsubs, query(collection(db, 'movs'), where('driverId', '==', S.uid)), (snap) => { S.movs = snap.docs.map((d) => d.data()); render(); });
+    listen(roleUnsubs, query(collection(db, 'movs'), where('driverId', '==', S.uid)), (snap) => { S.movs = snap.docs.map((d) => d.data()); try { bonoNotice(snap.docs); } catch (e) {} render(); });
+    setTimeout(() => { try { claimRef(); } catch (e) {} }, 4000);
     listen(roleUnsubs, query(collection(db, 'recargas'), where('driverId', '==', S.uid)), (snap) => { S.recargas = snap.docs.map((d) => d.data()).filter((r) => r && r.id && r.estado); render(); });
     listen(roleUnsubs, doc(db, 'config', 'pago'), (s) => { S.pago = (s.exists() && s.data().texto) || ''; render(); });
     listen(roleUnsubs, doc(db, 'config', 'zonas'), (s) => { S.zonas = (s.exists() && Array.isArray(s.data().zonas)) ? s.data().zonas : []; S.radioKm = (s.exists() && Number(s.data().radioKm)) || 3; mergeOrders(); syncSheet(); render(); });
@@ -686,6 +705,7 @@ function queueOpen() {
 }
 
 function startAdmin() {
+  if (!S.isAgent) listen(unsubs, query(collection(db, 'referidos'), limit(300)), (snap) => { S.referidos = snap.docs.map((d) => Object.assign({ uid: d.id }, d.data())); render(); });
   unsubs.push(onSnapshot(query(collection(db, 'liberados'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = (d.data() || {}).driverId || '-'; }); S.libres = m; render(); }, () => {}));
   listen(unsubs, query(collection(db, 'orders'), orderBy('creadoEn', 'desc'), limit(200)), (snap) => { S.myOrders = orderDocs(snap); mergeOrders(); render(); });
   listen(unsubs, query(collection(db, 'users'), limit(500)), (snap) => { S.users = snap.docs.map((d) => d.data()).filter((u) => u && u.id && u.role && u.name); render(); });
@@ -1037,6 +1057,41 @@ async function resolveRecarga(id, ok) {
     });
     toast(ok ? 'Recarga confirmada. Saldo acreditado.' : 'Recarga rechazada.');
   } catch (e) { toast(e && e.message === 'done' ? 'Esa recarga ya estaba resuelta.' : 'No se pudo completar. Intenta de nuevo.'); }
+  S.busy.delete(k); render();
+}
+function uidByRep(n) { return Object.keys(S.aprobs || {}).find((k) => S.aprobs[k] && S.aprobs[k].repNo === n) || ''; }
+const repLbl = (n) => 'R-' + String(n).padStart(3, '0');
+function bonosHtml() {
+  const l = (S.referidos || []).filter((r) => r.estado === 'pendiente').sort((a, b) => (a.creadoEn || 0) - (b.creadoEn || 0));
+  let h = '<h2 class="section">Bonos por recomendación</h2>';
+  if (!l.length) return h + emptyBox('Sin bonos pendientes', 'Cuando un repartidor invitado haga su primer pedido, aparece aquí para pagarle ' + pesos(BONO_C / 100) + ' a quien lo invitó.');
+  return h + l.map((r) => {
+    const inv = uidByRep(r.refNo), iu = S.users.find((u) => u.id === inv), n = S.myOrders.filter((o) => o.driverId === r.uid && o.estado === 'entregado' && !o.liberado).length;
+    const dis = S.busy.has('bn' + r.uid) ? ' disabled' : '';
+    return '<article class="order"><div class="head"><span class="folio">' + esc(r.nombre || 'Repartidor nuevo') + '</span><span class="chip ' + (n ? 'entregado' : 'abierto') + '">' + (n ? 'Ya entregó' : 'Aún sin pedido') + '</span><span class="ago">' + ago(r.creadoEn) + '</span></div>' +
+      '<div class="line"><span class="k">Lo invitó</span><span class="v">' + (inv ? esc(repLbl(r.refNo) + ' · ' + ((iu && iu.name) || '')) : 'Número ' + esc(repLbl(r.refNo)) + ' (no encontrado)') + '</span></div>' +
+      '<div class="line"><span class="k">Entregas del nuevo</span><span class="v">' + n + '</span></div>' +
+      '<div class="actions"><button class="btn ghost small" type="button" data-act="bn-no" data-id="' + esc(r.uid) + '"' + dis + '>Rechazar</button><button class="btn primary small" type="button" data-act="bn-ok" data-id="' + esc(r.uid) + '"' + (dis || (n && inv ? '' : ' disabled')) + '>Pagar ' + pesos(BONO_C / 100) + '</button></div></article>';
+  }).join('');
+}
+async function resolveBono(uid, ok) {
+  const r = (S.referidos || []).find((x) => x.uid === uid), k = 'bn' + uid;
+  if (!S.isAdmin || S.isAgent || !r || r.estado !== 'pendiente' || S.busy.has(k)) return;
+  const inv = uidByRep(r.refNo); if (ok && !inv) { toast('No se encontró al repartidor que lo invitó.'); return; }
+  S.busy.add(k); render();
+  try {
+    await runTransaction(db, async (tx) => {
+      const rref = doc(db, 'referidos', uid), rs = await tx.get(rref);
+      if (!rs.exists() || rs.data().estado !== 'pendiente') throw new Error('done');
+      const now = Date.now();
+      if (ok) {
+        tx.set(doc(db, 'wallets', inv), { saldoC: increment(BONO_C) }, { merge: true });
+        tx.set(doc(db, 'movs', 'bn_' + uid), { driverId: inv, tipo: 'bono', montoC: BONO_C, referido: uid, creadoEn: now });
+      }
+      tx.update(rref, { estado: ok ? 'pagado' : 'rechazado', resueltoEn: now });
+    });
+    toast(ok ? 'Bono pagado: ' + pesos(BONO_C / 100) + '.' : 'Bono rechazado.');
+  } catch (e) { toast(e && e.message === 'done' ? 'Ese bono ya estaba resuelto.' : 'No se pudo completar. Intenta de nuevo.'); }
   S.busy.delete(k); render();
 }
 async function savePago() {
@@ -1404,7 +1459,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '22-oct-2026 · 3';
+const APP_V = '22-oct-2026 · 4';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -1450,12 +1505,15 @@ function pfPass() {
     '<p class="pf-er" role="alert"></p><button type="submit" class="btn primary block">Guardar contraseña</button></form>');
 }
 (function () { try { const t = localStorage.getItem('gasca_theme'); if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t); } catch (e) {} })();
+(function () { try { const r = new URLSearchParams(location.search).get('ref'); if (r && /^\d{1,5}$/.test(r)) localStorage.setItem('gasca_ref', r); } catch (e) {} })();
+const BONO_C = 5000;
+function myRepNo() { return (S.myAprob && S.myAprob.repNo) || 0; }
 function appLink() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
 function openShare() {
   let ov = document.getElementById('shareOv');
   if (!ov) { ov = document.createElement('div'); ov.id = 'shareOv'; document.body.appendChild(ov);
     ov.addEventListener('click', (e) => { if (e.target === ov || (e.target.closest && e.target.closest('[data-sh=close]'))) ov.hidden = true; }); }
-  const link = appLink();
+  const link = appLink() + (myRepNo() ? '?ref=' + myRepNo() : '');
   const msg = 'Hola 👋 Te invito a trabajar como repartidor en Gasca, entregas certificadas en Tepic 🛵. Instala la app aquí: ' + link;
   const WA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 2a8 8 0 1 1-4.2 14.8l-.3-.2-2.9.8.8-2.8-.2-.3A8 8 0 0 1 12 4z"/><path d="M8.6 7.5c-.3 0-.6.2-.8.5-.6.8-.7 2 .2 3.4 1.2 2 3 3.3 4.8 3.9 1.2.4 2.1.1 2.6-.7.2-.4.3-.9.2-1l-1.800-.9c-.2-.1-.4 0-.5.1l-.6.8c-.1.1-.3.2-.5.1-1-.4-1.900-1.200-2.400-2.200-.1-.2 0-.4.1-.5l.5-.6c.1-.2.1-.4 0-.6L9.200 7.900c-.1-.3-.3-.4-.6-.4z"/></svg>';
   const draw = () => {
@@ -1521,7 +1579,7 @@ function renderRider() {
 
 function movRow(m) {
   const plus = m.montoC >= 0;
-  const lbl = m.tipo === 'recarga' ? 'Recarga' : 'Comisión ' + (m.orderId ? folio(m.orderId) : '');
+  const lbl = m.tipo === 'recarga' ? 'Recarga' : m.tipo === 'bono' ? 'Bono por recomendación' : 'Comisión ' + (m.orderId ? folio(m.orderId) : '');
   return '<div class="mov"><span>' + esc(lbl) + '<small>' + ago(m.creadoEn) + '</small></span><span class="' + (plus ? 'plus' : 'minus') + '">' + (plus ? '+' : '−') + cents(Math.abs(m.montoC)) + '</span></div>';
 }
 /* Ficha de depósito: monto exacto y número grande, separado de 4 en 4, para que la cajera lo teclee sin error. */
@@ -1715,7 +1773,7 @@ function renderAdmin() {
   if (S.tab === 'recargas') {
     const q = normCode($('#a-buscar').value);
     const shown = q ? S.recargas.filter((r) => normCode(r.codigo).indexOf(q) >= 0).sort((a, b) => b.creadoEn - a.creadoEn) : pend;
-    let h = '<h2 class="section">' + (q ? 'Resultado de la búsqueda' : 'Recargas por confirmar') + '</h2>';
+    let h = (q || S.isAgent ? '' : bonosHtml()) + '<h2 class="section">' + (q ? 'Resultado de la búsqueda' : 'Recargas por confirmar') + '</h2>';
     if (!shown.length) h += q ? emptyBox('Sin coincidencias', 'Ningún código se parece a ese. Revisa la referencia del depósito.') : emptyBox('Nada pendiente', 'Cuando un repartidor genere un código de pago, aparece aquí para que lo confirmes.');
     else h += shown.map((r) => {
       const dis = S.busy.has('rc' + r.id) ? ' disabled' : '', open = r.estado === 'pendiente', tk = safeImg(r.ticket);
@@ -1937,6 +1995,8 @@ document.addEventListener('click', (e) => {
   else if (act === 'cancel-no') { S.cancelId = null; render(); }
   else if (act === 'cancel-yes') cancelOrder(id);
   else if (act === 'wz-open') wzDone(id);
+  else if (act === 'bn-ok') resolveBono(id, true);
+  else if (act === 'bn-no') resolveBono(id, false);
   else if (act === 'share-open') openShare();
   else if (act === 'accept') { ensureAudio(); accept(id); }
   else if (act === 'counter') { ensureAudio(); counter(id, Number(b.getAttribute('data-m'))); }
