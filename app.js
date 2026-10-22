@@ -1208,7 +1208,8 @@ function renderMisPedidos(el, my) {
       '<div class="mp-sol">Solicitud ' + folio(o.id) + '</div><div class="mp-fh">' + fmtFH(o.entregadoEn || o.canceladoEn || o.creadoEn) + '</div>' +
       '<div class="mp-dir">' + esc(destParts(o.dest).dir) + '</div><div class="mp-money"><b>Ganancia: ' + pesos(gan) + '</b><span>Comisión por usar la app: ' + pesos(com) + '</span></div></article>';
   };
-  const h = '<h2 class="mp-title">Mis pedidos</h2><div class="mp-sub">Entregas Gasca (' + fin.length + ')</div>' + (fin.length ? fin.slice(0, 60).map(card).join('') : '<p class="hint">Aquí aparecerán tus pedidos entregados.</p>');
+  const h = '<h2 class="mp-title">Mis pedidos</h2><div class="mp-sub">Entregas Gasca (' + fin.length + ')</div>' + (fin.length ? fin.slice(0, S.mpN || 50).map(card).join('') : '<p class="hint">Aquí aparecerán tus pedidos entregados.</p>') +
+    (fin.length > (S.mpN || 50) ? '<button type="button" class="btn ghost block" data-act="mp-more">Ver más (' + (fin.length - (S.mpN || 50)) + ' anteriores)</button>' : '');
   if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
 }
 function renderEnCurso(el, list) {
@@ -1708,6 +1709,7 @@ document.addEventListener('click', (e) => {
   else if (act === 'pf-pass') pfPass();
   else if (act === 'pf-terms') pfText('Términos y condiciones', REG_TEXT.split('\n---\n')[0]);
   else if (act === 'pf-priv') pfText('Política de privacidad', REG_TEXT.split('\n---\n')[1] || PRIV_TEXT);
+  else if (act === 'mp-more') { S.mpN = (S.mpN || 50) + 50; render(); }
   else if (act === 'pf-switch') { if (window.__gmOpen) window.__gmOpen(); }
   else if (act === 'ag-add') agAdd('ag');
   else if (act === 'sc-add') agAdd('sc', 'socio');
