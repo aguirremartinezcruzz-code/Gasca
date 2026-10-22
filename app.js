@@ -245,12 +245,14 @@ function setMode(m) {
   $('#authBtn').textContent = { login: 'Entrar', signup: 'Crear cuenta', owner: 'Entrar', profile: 'Guardar' }[m];
   { const em = $('#a-email'); if (em) em.readOnly = !!(S.soporteLink && ow); }
   $('#authBtn2').hidden = !ow; $('#authBtn2').textContent = 'Crear mi cuenta (dueño o soporte)';
-  { const cl = form && roleVal() === 'cliente';
-    $('#fEmail').hidden = pr || cl; $('#fTel').hidden = !((su || (pr && !telOf(S.email))) && cl);
+  { const cl = form && roleVal() === 'cliente', rp = su && roleVal() === 'rider';
+    $('#fEmail').hidden = pr || cl || rp; $('#fTel').hidden = !(((su || (pr && !telOf(S.email))) && cl) || rp);
     $('#a-email').type = 'text';
     document.querySelector('label[for="a-email"]').textContent = m === 'login' ? 'Correo o teléfono' : 'Correo';
     if (cl) { $('#lblName').textContent = 'Tu nombre completo'; $('#a-name').placeholder = 'Ej. María López'; }
-    if (cl) $('#authHint').textContent = 'Después te pediremos una selfie y tu INE por los dos lados para aprobar tu cuenta.';
+    if (rp) { $('#lblName').textContent = 'Tu nombre completo (como aparece en tu INE)'; $('#a-name').placeholder = 'Ej. Juan Pérez López'; }
+    if (rp) $('#authHint').textContent = 'Entras con tu teléfono y tu contraseña. Después te pediremos tu INE por los dos lados, tu licencia por el frente, tu tarjeta de circulación y fotos de tu moto y su placa.';
+    else if (cl) $('#authHint').textContent = 'Después te pediremos una selfie y tu INE por los dos lados para aprobar tu cuenta.';
     else $('#authHint').textContent = 'Después te pediremos fotos de tus documentos para aprobar tu cuenta.';
     if (m === 'login') $('#a-email').placeholder = 'correo o teléfono de 10 dígitos'; else $('#a-email').placeholder = 'tucorreo@ejemplo.com'; }
   const link = (act, txt) => '<button type="button" data-act="' + act + '">' + txt + '</button>';
@@ -265,7 +267,7 @@ function setMode(m) {
 function showErr() { const el = $('#authErr'); el.hidden = !S.authErr; el.textContent = S.authErr; }
 function authMsg(e) {
   const c = (e && e.code) || '';
-  if (c === 'auth/email-already-in-use') return (roleVal() === 'cliente' ? 'Ese teléfono ya tiene cuenta. Toca "Ya tengo cuenta".' : 'Ese correo ya tiene cuenta. Toca "Ya tengo cuenta" y entra con tu contraseña. Si te dieron de baja, al entrar podrás volver a solicitar tu ingreso.');
+  if (c === 'auth/email-already-in-use') return ((roleVal() === 'cliente' || roleVal() === 'rider') ? 'Ese teléfono ya tiene cuenta. Toca "Ya tengo cuenta".' : 'Ese correo ya tiene cuenta. Toca "Ya tengo cuenta" y entra con tu contraseña. Si te dieron de baja, al entrar podrás volver a solicitar tu ingreso.');
   if (c === 'auth/invalid-credential' || c === 'auth/wrong-password' || c === 'auth/user-not-found' || c === 'auth/invalid-login-credentials') return 'Correo, teléfono o contraseña incorrectos.';
   if (c === 'auth/weak-password') return 'La contraseña debe tener al menos 6 caracteres.';
   if (c === 'auth/invalid-email') return 'Ese correo no se ve bien. Revísalo.';
@@ -279,6 +281,11 @@ async function createProfile(uid, p) {
   const rec = { id: uid, role: cli ? 'shop' : p.role, name: p.name, creadoEn: Date.now() };
   if (cli) rec.addr = 'CLIENTE · Tel ' + p.tel; else if (p.role === 'shop') rec.addr = p.addr;
   await setDoc(doc(db, 'users', uid), rec);
+  if (p.role === 'rider') {
+    const em = String((auth.currentUser && auth.currentUser.email) || '').toLowerCase().replace(/\+gasca-(negocio|repartidor|personal)(?=@)/, '');
+    const t = String(p.tel || '').replace(/\D/g, '').slice(-10) || telOf(em);
+    if (t) { try { await updateDoc(doc(db, 'users', uid), { addr: 'Tel ' + t }); } catch (e) {} }
+  }
 }
 function setBusy(b) { S.authBusy = b; $('#authBtn').disabled = b; $('#authBtn2').disabled = b; }
 
@@ -294,7 +301,7 @@ af.addEventListener('submit', async (e) => {
   S.authErr = ''; showErr();
   const needProfile = () => {
     if (!role) return 'Elige si eres tienda, repartidor o cliente.';
-    if (role === 'cliente' && m === 'signup' && tel.length !== 10) return 'Escribe tu número de teléfono de 10 dígitos.';
+    if ((role === 'cliente' || role === 'rider') && m === 'signup' && tel.length !== 10) return 'Escribe tu número de teléfono de 10 dígitos.';
     if (name.length < 2) return 'Escribe tu nombre.';
     if (role === 'shop' && addr.length < 5) return 'Escribe la dirección de tu negocio.';
     return '';
@@ -308,7 +315,7 @@ af.addEventListener('submit', async (e) => {
       await signInWithEmailAndPassword(auth, email, pass);
     } else if (m === 'signup') {
       const pe = needProfile(); if (pe) return fail(pe);
-      if (role === 'cliente') email = telEmail(tel);
+      if (role === 'cliente' || role === 'rider') email = telEmail(tel);
       if (!email) return fail('Escribe tu correo.');
       if (pass.length < 6) return fail('La contraseña debe tener al menos 6 caracteres.');
       if (OWNER_OK && email === OWNER) return fail('Ese correo es del dueño. Usa "Soy el dueño".');
@@ -1297,6 +1304,7 @@ function altaCard(u) {
   const n = Array.isArray(u.fotos) ? u.fotos.length : 0;
   let h = '<article class="order"><div class="head"><span class="folio">' + esc(repTag(u.id) + u.name) + '</span><span class="chip abierto">' + esc(roleLbl(u)) + '</span><span class="ago">' + ago(u.docsEn) + '</span></div>' +
     bajaLine(u.id) + (u.role === 'shop' && u.addr ? '<div class="line"><span class="k">Dirección</span><span class="v">' + esc(u.addr) + '</span></div>' : '') +
+    (u.role === 'rider' && /^Tel \d{10}$/.test(u.addr || '') ? '<div class="line"><span class="k">Teléfono</span><span class="v"><b>' + esc(u.addr.slice(4)) + '</b></span></div><div class="links"><a href="' + esc(waUrl(u.addr.slice(4))) + '" target="_blank" rel="noopener">💬 WhatsApp</a><a href="tel:' + esc(u.addr.slice(4)) + '">📞 Llamar</a></div>' : '') +
     '<div class="line"><span class="k">Fotos enviadas</span><span class="v">' + n + ' de ' + slots.length + '</span></div>' +
     ('<div class="line"><span class="k">' + (u.role === 'rider' ? 'Reglamento' : 'Aviso de privacidad') + '</span><span class="v">' + (u.reglamentoEn ? 'Aceptado v' + esc(u.reglamentoV || '') + ' · ' + new Date(u.reglamentoEn).toLocaleString('es-MX') : 'No lo ha aceptado') + '</span></div>');
   if (!open) return h + '<div class="actions"><button class="btn primary small" type="button" data-act="rev-open" data-id="' + esc(u.id) + '">Revisar documentos</button></div></article>';
@@ -2087,7 +2095,7 @@ function renderIncid(el) {
       (!open ? '<div class="line"><span class="k">Atendió</span><span class="v"><b>' + esc(x.atendidaPor || 'Sin registro (antes de soporte)') + '</b>' + (x.atendidaEn ? ' · ' + new Date(x.atendidaEn).toLocaleString('es-MX') : '') + ' · ' + esc({ liberado: 'Liberó el pedido', cancelado: 'Canceló el pedido', reasignado: 'Reasignó el pedido', atendida: 'Marcó atendida' }[x.accion] || 'Marcó atendida') + '</span></div>' : '') +
       '<div class="line"><span class="k">Problema</span><span class="v"><b>' + (NOANS_RE.test(x.nota || '') ? '📵 Nadie contesta en la entrega' : esc(INC_TIPOS[x.tipo] || x.tipo)) + '</b></span></div>' +
       (x.nota ? '<div class="line"><span class="k">Nota</span><span class="v">' + esc(x.nota) + noansMap(x.nota) + '</span></div>' : '') +
-      (() => { const mt = /Tel (\d{10})/.exec(x.nota || ''); return mt ? '<div class="links"><a href="' + esc(waUrl(mt[1])) + '" target="_blank" rel="noopener">💬 WhatsApp al repartidor</a><a href="tel:' + mt[1] + '">📞 Llamar ' + mt[1] + '</a></div>' : '<div class="line"><span class="k">Contacto</span><span class="v"><small>Este aviso no trae teléfono. Los nuevos avisos sí lo traen.</small></span></div>'; })() +
+      (() => { const mt = /Tel (\d{10})/.exec(x.nota || ''); const du = S.users.find((u) => u.id === x.driverId), ut = du && /^Tel (\d{10})$/.exec(du.addr || ''), tt = mt ? mt[1] : (ut ? ut[1] : ''); return tt ? '<div class="links"><a href="' + esc(waUrl(tt)) + '" target="_blank" rel="noopener">💬 WhatsApp al repartidor</a><a href="tel:' + tt + '">📞 Llamar ' + tt + '</a></div>' : '<div class="line"><span class="k">Contacto</span><span class="v"><small>Este aviso no trae teléfono. Los nuevos avisos sí lo traen.</small></span></div>'; })() +
       orderBlock(o, x) +
       (S.libs && S.libs[x.orderId] && o && o.estado === 'recogido' ? '<div class="paynote">Código de liberación: <b style="font-size:26px;letter-spacing:4px">' + esc(S.libs[x.orderId]) + '</b><br><small>Díctaselo al repartidor después de hablar con el cliente y el restaurante.</small></div>' : '') +
       (o && o.liberado ? '<div class="line"><span class="k">Resultado</span><span class="v"><b>🔑 Pedido no entregado · Liberado por administración</b></span></div>' : '') +
