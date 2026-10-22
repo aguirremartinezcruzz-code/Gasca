@@ -837,7 +837,7 @@ function UI_goMap(id) { try { const u = window.__gmap; if (u) { u.fitKey = ''; }
     '.oc-h2{font-weight:800;font-size:17px;margin-top:4px}.oc-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}.oc-btns.two{grid-template-columns:1fr 1fr}.oc-b{display:flex;align-items:center;justify-content:center;gap:10px;min-height:58px;padding:8px 10px;border:1.5px solid var(--line);background:var(--surface);color:var(--amber-fg);border-radius:14px;font-weight:800;font-size:16px;text-decoration:none;text-align:left}.oc-b.flat{border:0;background:none;justify-content:flex-start}.oc-b.wide{width:100%;justify-content:center}.oc-b svg{flex:none}' +
     '.oc-foot{padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line)}' +
     '.sl{position:relative;height:66px;border-radius:99px;background:color-mix(in srgb,#f08c00 22%,var(--surface));border:2.5px solid #f08c00;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;overflow:hidden}.sl::before{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--p,0%);background:rgba(240,140,0,.35)}.sl-t{position:relative;font-weight:800;font-size:18px;color:#a8530a;padding-left:56px}.sl-h{position:absolute;left:4px;top:4px;bottom:4px;width:54px;border-radius:50%;background:#f08c00;display:grid;place-items:center;touch-action:none;cursor:grab;box-shadow:0 2px 6px rgba(0,0,0,.3)}.sl:not(.drag) .sl-h{transition:transform .2s}.sl.lock{border-color:#b8b8b8;background:var(--surface2)}.sl.lock .sl-h{background:#b0b0b0;cursor:not-allowed}.sl.lock .sl-t{color:var(--muted);font-size:15.5px}' +
-    '.pf-title{text-align:center;font-size:21px;font-weight:800;margin:0 0 4px}.pf-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0 14px}.pf-pic{position:relative;width:104px;height:104px;border-radius:50%;background:var(--surface);border:3px solid #f4b400;display:grid;place-items:center;cursor:pointer;font-size:0}.pf-pic img{width:100%;height:100%;object-fit:cover;border-radius:50%}.pf-cam{position:absolute;right:-2px;bottom:-2px;width:34px;height:34px;border-radius:50%;background:#f08c00;display:grid;place-items:center;border:3px solid var(--bg)}.pf-nm{font-size:22px;font-weight:800;text-align:center;margin-top:6px;line-height:1.2}.pf-no{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:6px 16px}.pf-no small{font-size:13px;font-weight:700;color:var(--muted)}.pf-no b{font-size:18px;letter-spacing:.04em}.pf-hint{font-size:14px;color:var(--muted)}header.top{position:relative}#secPill{position:absolute;right:14px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:7px 14px 7px 10px;box-shadow:0 2px 6px rgba(0,0,0,.1);color:var(--ink)}#secPill[hidden]{display:none}#secPill i{display:grid;place-items:center;width:22px;height:22px;color:#f08c00}#secPill i svg{width:20px;height:20px}#secPill b{font-size:15px;font-weight:800;white-space:nowrap}.drv{width:46px;height:46px;border-radius:50%;object-fit:cover;flex:none;border:2px solid var(--line)}.status:has(.drv){display:flex;align-items:center;gap:10px}.pf-av{display:flex;align-items:center;gap:14px;padding:6px 4px}.pf-pic{width:76px;height:76px;border-radius:50%;background:var(--surface);border:2px solid var(--line);display:grid;place-items:center;overflow:hidden;font-size:30px}.pf-pic img{width:100%;height:100%;object-fit:cover}.pf-avt{font-weight:800;color:var(--amber-fg);font-size:16px}.gm-ord{position:absolute;right:12px;bottom:96px;border:0;background:#16202a;color:#fff;border-radius:99px;padding:11px 18px;font-weight:800;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,.45)}.gm-ord[hidden]{display:none}.gm-attr{bottom:70px!important}.gm-chip{background:#fff4d6!important;border:1.5px solid #f0b429}' +
+    '.pf-title{text-align:center;font-size:21px;font-weight:800;margin:0 0 4px}.pf-card{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0 14px}.pf-pic{position:relative;width:104px;height:104px;border-radius:50%;background:var(--surface);border:3px solid #f4b400;display:grid;place-items:center;cursor:pointer;font-size:0}.pf-pic img{width:100%;height:100%;object-fit:cover;border-radius:50%}.pf-cam{position:absolute;right:-2px;bottom:-2px;width:34px;height:34px;border-radius:50%;background:#f08c00;display:grid;place-items:center;border:3px solid var(--bg)}.pf-nm{font-size:22px;font-weight:800;text-align:center;margin-top:6px;line-height:1.2}.pf-no{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:6px 16px}.pf-no small{font-size:13px;font-weight:700;color:var(--muted)}.pf-no b{font-size:18px;letter-spacing:.04em}.pf-hint{font-size:14px;color:var(--muted)}header.top{position:relative}#secPill{position:absolute;right:14px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:7px 14px 7px 10px;box-shadow:0 2px 6px rgba(0,0,0,.1);color:var(--ink)}#secPill[hidden]{display:none}#secPill:not([data-act]){pointer-events:none}#secPill[data-act]{cursor:pointer;background:#16202a;color:#fff;border-color:#16202a}#secPill[data-act] i{color:#f6b400}#secPill[data-act]:active{transform:translateY(-50%) scale(.97)}#shareOv{position:fixed;inset:0;z-index:9990;background:rgba(10,15,20,.6);display:flex;align-items:center;justify-content:center;padding:18px}#shareOv[hidden]{display:none}#shareOv .sh{background:#fff;color:#16202a;border-radius:24px;max-width:380px;width:100%;padding:22px 20px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;position:relative;box-shadow:0 20px 50px rgba(0,0,0,.4)}#shareOv h2{margin:0;font-size:24px;font-weight:800;line-height:1.15}#shareOv p{margin:0;font-size:16px;color:#4a5560}#shareOv .shx{position:absolute;right:10px;top:8px;border:0;background:none;font-size:30px;line-height:1;color:#6b7683;padding:6px 10px}#shareOv .shq{background:#fff;border:3px solid #f6b400;border-radius:18px;padding:10px;width:230px;height:230px;display:grid;place-items:center}#shareOv .shq svg{width:100%;height:100%}#shareOv .shl{font-size:12.5px;color:#6b7683;word-break:break-all}#shareOv .shw{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:56px;border-radius:16px;background:#1fa855;color:#fff;font-weight:800;font-size:18px;text-decoration:none}#shareOv .shw svg{width:26px;height:26px;fill:#fff}#secPill i{display:grid;place-items:center;width:22px;height:22px;color:#f08c00}#secPill i svg{width:20px;height:20px}#secPill b{font-size:15px;font-weight:800;white-space:nowrap}.drv{width:46px;height:46px;border-radius:50%;object-fit:cover;flex:none;border:2px solid var(--line)}.status:has(.drv){display:flex;align-items:center;gap:10px}.pf-av{display:flex;align-items:center;gap:14px;padding:6px 4px}.pf-pic{width:76px;height:76px;border-radius:50%;background:var(--surface);border:2px solid var(--line);display:grid;place-items:center;overflow:hidden;font-size:30px}.pf-pic img{width:100%;height:100%;object-fit:cover}.pf-avt{font-weight:800;color:var(--amber-fg);font-size:16px}.gm-ord{position:absolute;right:12px;bottom:96px;border:0;background:#16202a;color:#fff;border-radius:99px;padding:11px 18px;font-weight:800;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,.45)}.gm-ord[hidden]{display:none}.gm-attr{bottom:70px!important}.gm-chip{background:#fff4d6!important;border:1.5px solid #f0b429}' +
     '.mp-ver{margin-top:10px;width:100%;border:1.5px solid var(--line);background:var(--surface);color:var(--amber-fg);border-radius:12px;padding:10px;font-weight:800;font-size:15px}.lb-box{margin-top:6px}';
   document.head.appendChild(st);
 })();
@@ -1449,12 +1449,30 @@ function pfPass() {
     '<p class="pf-er" role="alert"></p><button type="submit" class="btn primary block">Guardar contraseña</button></form>');
 }
 (function () { try { const t = localStorage.getItem('gasca_theme'); if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t); } catch (e) {} })();
+function appLink() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
+function openShare() {
+  let ov = document.getElementById('shareOv');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'shareOv'; document.body.appendChild(ov);
+    ov.addEventListener('click', (e) => { if (e.target === ov || (e.target.closest && e.target.closest('[data-sh=close]'))) ov.hidden = true; }); }
+  const link = appLink();
+  const msg = 'Hola 👋 Te invito a trabajar como repartidor en Gasca, entregas certificadas en Tepic 🛵. Instala la app aquí: ' + link;
+  const WA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 2a8 8 0 1 1-4.2 14.8l-.3-.2-2.9.8.8-2.8-.2-.3A8 8 0 0 1 12 4z"/><path d="M8.6 7.5c-.3 0-.6.2-.8.5-.6.8-.7 2 .2 3.4 1.2 2 3 3.3 4.8 3.9 1.2.4 2.1.1 2.6-.7.2-.4.3-.9.2-1l-1.800-.9c-.2-.1-.4 0-.5.1l-.6.8c-.1.1-.3.2-.5.1-1-.4-1.900-1.200-2.400-2.200-.1-.2 0-.4.1-.5l.5-.6c.1-.2.1-.4 0-.6L9.200 7.900c-.1-.3-.3-.4-.6-.4z"/></svg>';
+  const draw = () => {
+    let qr = '';
+    if (window.qrcode) { try { qr = qrSvg(link); } catch (e) { qr = ''; } }
+    ov.innerHTML = '<div class="sh"><button type="button" class="shx" data-sh="close" aria-label="Cerrar">×</button><h2>Comparte la aplicación con amigos</h2><p>Comparte la aplicación con tus amigos repartidores</p>' +
+      '<div class="shq">' + (qr || '<small>' + (S.qrFail ? 'No se pudo generar el QR. Usa el botón de WhatsApp.' : 'Generando QR…') + '</small>') + '</div><div class="shl">' + esc(link) + '</div>' +
+      '<a class="shw" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent(msg) + '">' + WA + 'Compartir por WhatsApp</a></div>';
+  };
+  draw(); ov.hidden = false;
+  if (!window.qrcode) loadQR((ok) => { S.qrFail = !ok; if (!ov.hidden) draw(); });
+}
 function secPill() {
-  const t = { perfil: ['user', 'Mi perfil'], viajes: ['moto', 'Mi resumen'], saldo: ['bag', 'Mis pedidos'], resumen: ['notes', 'En curso'] }[S.tab];
+  const t = { disp: ['share', 'Invitar amigos'], perfil: ['user', 'Mi perfil'], viajes: ['moto', 'Mi resumen'], saldo: ['bag', 'Mis pedidos'], resumen: ['notes', 'En curso'] }[S.tab];
   let el = document.getElementById('secPill');
   if (!el) { el = document.createElement('div'); el.id = 'secPill'; el.hidden = true; const hd = document.querySelector('header.top'); if (hd) hd.appendChild(el); }
   const on = !!t && view() === 'rider';
-  el.hidden = !on; if (on) { const h = '<i>' + TI[t[0]] + '</i><b>' + esc(t[1]) + '</b>'; if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; } }
+  el.hidden = !on; if (on) { if (S.tab === 'disp') { el.setAttribute('data-act', 'share-open'); el.setAttribute('role', 'button'); } else { el.removeAttribute('data-act'); el.removeAttribute('role'); } const h = '<i>' + TI[t[0]] + '</i><b>' + esc(t[1]) + '</b>'; if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; } }
 }
 function renderRider() {
   const open = S.orders.filter((o) => o.estado === 'abierto').sort((a, b) => (a.creadoEn || 0) - (b.creadoEn || 0));
@@ -1739,6 +1757,7 @@ const TI = {
   notes: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm2.2 4.2a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zm3.6.2a.9.9 0 0 0 0 1.8h5.4a.9.9 0 0 0 0-1.8zM7.2 10.9a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zm3.6.2a.9.9 0 0 0 0 1.8h5.4a.9.9 0 0 0 0-1.8zm-3.6 3.7a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zm3.6.2a.9.9 0 0 0 0 1.8h5.4a.9.9 0 0 0 0-1.8z"/></svg>',
   bag: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 7V6a4 4 0 0 1 8 0v1h2.2a1 1 0 0 1 1 .9l1 12A1 1 0 0 1 19.2 21H4.8a1 1 0 0 1-1-1.1l1-12a1 1 0 0 1 1-.9zm2 0h4V6a2 2 0 0 0-4 0zm-.5 3.2a1 1 0 0 0 0 2 1 1 0 0 0 0-2zm5 0a1 1 0 0 0 0 2 1 1 0 0 0 0-2z"/></svg>',
   moto: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 6.2c0-.6.4-1 1-1h3c.6 0 1 .4 1 1s-.4 1-1 1H4c-.6 0-1-.4-1-1zM6.4 9.2h3.7l1.9 4.6h2.2l-1.2-3.5c-.2-.7.3-1.3 1-1.3h1.1c.5 0 .9.3 1.1.7l2 4.8a3.4 3.4 0 1 1-1.9.8l-.3-.7h-2.4c-.5 0-.9-.3-1.1-.7L9.5 11H7.7c-1.6 0-2.9 1.2-3.1 2.8l-.2 1.7H6a3.5 3.5 0 1 1-3.5 4.1.7.7 0 0 1 0-.2V15c0-3.4 1.6-5.8 3.9-5.8zM5.2 20.4a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2zm13.5 0a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z"/></svg>',
+  share: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18 16.1c-.8 0-1.5.3-2 .8L8.9 12.7c.1-.2.1-.5.1-.7s0-.5-.1-.7L15.9 9.2c.5.5 1.2.8 2.1.8a3 3 0 1 0-3-3c0 .2 0 .5.1.7L8 11.8a3 3 0 1 0 0 4.4l7.1 4.2c-.1.2-.1.5-.1.7a2.9 2.9 0 1 0 3-3z"/></svg>',
   user: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="7.8" r="4.3"/><path d="M3.6 20.2c0-4 3.8-6.3 8.4-6.3s8.4 2.3 8.4 6.3c0 .5-.4.8-.8.8H4.4c-.4 0-.8-.3-.8-.8z"/></svg>'
 };
 (function () {
@@ -1917,6 +1936,7 @@ document.addEventListener('click', (e) => {
   else if (act === 'cancel-no') { S.cancelId = null; render(); }
   else if (act === 'cancel-yes') cancelOrder(id);
   else if (act === 'wz-open') wzDone(id);
+  else if (act === 'share-open') openShare();
   else if (act === 'accept') { ensureAudio(); accept(id); }
   else if (act === 'counter') { ensureAudio(); counter(id, Number(b.getAttribute('data-m'))); }
   else if (act === 're-offer') reOffer(id);
@@ -3607,6 +3627,45 @@ function tarFor(km) {
   setInterval(bar, 400);
 })();
 
+
+/* ---------- permiso de ubicación: pantalla que lo pide al entrar (repartidor) ---------- */
+(function () {
+  let state = 'unknown', skip = false, ov = null, sig = '';
+  const q = () => {
+    try {
+      if (!navigator.permissions || !navigator.permissions.query) { state = 'prompt'; return; }
+      navigator.permissions.query({ name: 'geolocation' }).then((r) => { state = r.state; r.onchange = () => { state = r.state; tick(); }; }).catch(() => { state = 'prompt'; });
+    } catch (e) { state = 'prompt'; }
+  };
+  const st = document.createElement('style');
+  st.textContent = '#gpsGate{position:fixed;inset:0;z-index:9998;background:#f2f4f7;color:#16202a;display:flex;align-items:center;justify-content:center;padding:22px;overflow:auto}#gpsGate[hidden]{display:none}#gpsGate .gg{max-width:420px;width:100%;text-align:center;display:flex;flex-direction:column;gap:14px}#gpsGate .gi{width:96px;height:96px;margin:0 auto;border-radius:50%;background:#f6b400;display:grid;place-items:center;box-shadow:0 8px 22px rgba(246,180,0,.4)}#gpsGate h2{font-size:26px;margin:4px 0 0;font-weight:800}#gpsGate p{font-size:17px;line-height:1.4;margin:0}#gpsGate .gs{background:#fff;border:1px solid #d9dee5;border-radius:14px;padding:12px 14px;text-align:left;font-size:16px}#gpsGate .gs>b:first-child{display:block;margin-bottom:4px}#gpsGate .gn{background:none;border:0;color:#6b7683;text-decoration:underline;font-size:15px;padding:8px}#gpsGate .btn{min-height:56px;font-size:18px}';
+  document.head.appendChild(st);
+  function html() {
+    const denied = state === 'denied';
+    return '<div class="gg"><div class="gi"><svg viewBox="0 0 24 24" width="52" height="52" fill="#16202a"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg></div>' +
+      '<h2>' + (denied ? 'Ubicación apagada' : 'Activa tu ubicación') + '</h2>' +
+      '<p>Gasca necesita saber dónde estás para mostrarte los pedidos que te quedan cerca. <b>Sin la ubicación no te llegarán pedidos.</b></p>' +
+      (denied
+        ? '<div class="gs"><b>Para activarla:</b>1. Toca el candadito o los tres puntos de arriba, en el navegador.<br>2. Entra a <b>Configuración del sitio</b> → <b>Ubicación</b>.<br>3. Elige <b>Permitir</b>.<br>4. Regresa aquí y toca "Ya la activé".</div><button type="button" class="btn primary" data-gg="again">Ya la activé</button>'
+        : '<button type="button" class="btn primary" data-gg="ask">Permitir ubicación</button><div class="gs"><b>Cuando el celular te pregunte,</b>elige <b>"Permitir mientras usas la app"</b>. Deja Gasca abierta y la pantalla encendida mientras trabajas.</div>') +
+      '<button type="button" class="gn" data-gg="skip">Ahora no</button></div>';
+  }
+  function tick() {
+    const need = view() === 'rider' && !skip && (state === 'denied' || (state === 'prompt' && !S.pos)) && 'geolocation' in navigator;
+    if (!ov) { ov = document.createElement('div'); ov.id = 'gpsGate'; ov.hidden = true; document.body.appendChild(ov);
+      ov.addEventListener('click', (e) => {
+        const b = e.target.closest && e.target.closest('[data-gg]'); if (!b) return; const k = b.getAttribute('data-gg');
+        if (k === 'skip') { skip = true; tick(); return; }
+        const go = () => { try { navigator.geolocation.getCurrentPosition((p) => { state = 'granted'; S.posErr = ''; tick(); try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch (x) {} }, (er) => { if (er && er.code === 1) state = 'denied'; q(); tick(); }, { enableHighAccuracy: true, timeout: 20000 }); } catch (x) { state = 'denied'; tick(); } };
+        if (k === 'again') { q(); setTimeout(() => { if (state === 'denied') toast('Todavía está apagada. Actívala en la configuración del sitio.'); else go(); tick(); }, 400); return; }
+        go();
+      }); }
+    ov.hidden = !need;
+    if (need) { const h = html(); if (sig !== h) { ov.innerHTML = h; sig = h; } }
+  }
+  q(); setInterval(tick, 800); setInterval(q, 15000);
+  window.__gpsState = () => state; window.__gpsRefresh = () => { q(); };
+})();
 
 /* ---------- menú y perfiles múltiples con el mismo correo ---------- */
 (function () {
