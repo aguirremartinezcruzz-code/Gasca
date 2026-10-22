@@ -478,7 +478,10 @@ function startRole() {
     listen(roleUnsubs, doc(db, 'config', 'zonas'), (s) => { S.zonas = (s.exists() && Array.isArray(s.data().zonas)) ? s.data().zonas : []; S.radioKm = (s.exists() && Number(s.data().radioKm)) || 3; mergeOrders(); syncSheet(); render(); });
     listen(roleUnsubs, doc(db, 'config', 'tarifas'), (s) => { S.tarifas = s.exists() ? s.data() : null; });
     listen(roleUnsubs, query(collection(db, 'ofertas'), where('driverId', '==', S.uid)), onOfertas);
+    roleUnsubs.push(onSnapshot(query(collection(db, 'retiros'), where('driverId', '==', S.uid)), (snap) => { const m = Object.assign({}, S.retiros || {}); snap.docs.forEach((d) => { const v = d.data(); if (v && v.codigo) m[d.id] = v.codigo; }); S.retiros = m; render(); }, () => { S.retFail = true; render(); }));
+    roleUnsubs.push(onSnapshot(query(collection(db, 'liberados'), where('driverId', '==', S.uid)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = (d.data() || {}).driverId || '-'; }); S.libres = m; render(); }, () => { S.retFail = true; render(); }));
   } else {
+    roleUnsubs.push(onSnapshot(query(collection(db, 'liberados'), where('shopId', '==', S.uid)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = (d.data() || {}).driverId || '-'; }); S.libres = m; render(); }, () => {}));
     listen(roleUnsubs, query(collection(db, 'ofertas'), where('shopId', '==', S.uid)), onOfertas);
     listen(roleUnsubs, query(collection(db, 'orders'), where('shopId', '==', S.uid)), onShopOrders);
     listen(roleUnsubs, query(collection(db, 'codes'), where('shopId', '==', S.uid)), (snap) => { const c = {}; snap.docs.forEach((d) => { const v = d.data(); if (v && v.codigo) c[d.id] = v.codigo; }); S.codes = c; render(); });
@@ -674,6 +677,7 @@ function queueOpen() {
 }
 
 function startAdmin() {
+  unsubs.push(onSnapshot(query(collection(db, 'liberados'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = (d.data() || {}).driverId || '-'; }); S.libres = m; render(); }, () => {}));
   listen(unsubs, query(collection(db, 'orders'), orderBy('creadoEn', 'desc'), limit(200)), (snap) => { S.myOrders = orderDocs(snap); mergeOrders(); render(); });
   listen(unsubs, query(collection(db, 'users'), limit(500)), (snap) => { S.users = snap.docs.map((d) => d.data()).filter((u) => u && u.id && u.role && u.name); render(); });
   listen(unsubs, query(collection(db, 'aprobaciones'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = d.data(); }); S.aprobs = m; render(); assignRepNos(); });
@@ -712,6 +716,124 @@ async function createOrder(o) {
   return id;
 }
 
+/* ---------- orden de compra: pantalla flotante del repartidor (no se guarda, se arma con los datos del pedido) ---------- */
+const gen4 = () => String(Math.floor(1000 + Math.random() * 9000));
+const isCamino = (id) => !!(S.camino && S.camino[id]) || lsGet('gasca_cam_' + id) === '1';
+function isRel(o) { const v = S.libres && S.libres[o.id]; return !!v && (v === o.driverId || v === '-'); }
+function isReleased(o) { return isRel(o) || !!S.retFail; }
+const OCI = {
+  nav: '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M12 2 4.5 21 12 17.5 19.5 21z"/></svg>',
+  map: '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M9 3 3 5.5v15L9 18l6 2.5 6-2.5v-15L15 6zm0 2.2 4.5 1.9v11.7L9 15.9zM5 6.8l2-.8v10l-2 .8zm14 10.4-2 .8V8l2-.8z"/></svg>',
+  tel: '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8a15 15 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1z"/></svg>',
+  wa: '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M4 3h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H8l-4 4V4a1 1 0 0 1 1-1zm3 5v1.6h10V8zm0 3.4V13h7v-1.6z"/></svg>',
+  arrow: '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" width="26" height="26" fill="#fff" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3h.5A2.5 2.5 0 0 1 20 12.5v7a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-7A2.5 2.5 0 0 1 6.5 10zm2 0h6V7a3 3 0 0 0-6 0z"/></svg>'
+};
+function slHtml(key, id, text, locked) {
+  return '<div class="sl' + (locked ? ' lock' : '') + '" data-sl="' + key + '" data-id="' + esc(id) + '" role="button" tabindex="0" aria-label="' + esc(text) + '"><span class="sl-t">' + esc(text) + '</span><i class="sl-h">' + (locked ? OCI.lock : OCI.arrow) + '</i></div>';
+}
+function ocMoney(o) {
+  const d = pdesc(o), T = Number(o.tarifa) || 0, P = d.prod || 0, cobro = Number(o.cobro) || 0, com = comC(o) / 100, rec = d.quien === 'r';
+  let h = '<div class="oc-pay">' + (cobro > 0 ? 'PAGO: EFECTIVO · cobra ' + pesos(cobro) : 'No cobres nada al entregar' + (d.tipo && !rec ? ' · quien envía te paga el envío' : '')) + '</div>';
+  if (d.tipo === 'v') h += '<div class="oc-pay2">Paga al restaurante ' + pesos(P) + ' en efectivo al recoger.</div><div class="oc-l"><span>Producto (para el restaurante)</span><b>' + pesos(P) + '</b></div>';
+  h += '<div class="oc-l"><span>Envío (tu ganancia)</span><b>' + pesos(T) + '</b></div>';
+  if (cobro > 0) h += '<div class="oc-tot"><span>Total a cobrar</span><b>' + pesos(cobro) + '</b></div>';
+  h += '<div class="oc-com">Comisión por usar la app ' + m2(com) + ' · Te quedan ' + m2(T - com) + '</div>';
+  return '<div class="oc-box"><div class="oc-h">Lo que lleva el repartidor</div>' + h + '</div>';
+}
+function ocHtml(o, ro) {
+  const st = ordStatus(o), asig = o.estado === 'asignado', reco = o.estado === 'recogido', live = !ro && (asig || reco);
+  const dp = destParts(o.dest), wa = waUrl(o.tel), rel = isReleased(o), code = S.retiros && S.retiros[o.id];
+  const nav = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(String(asig ? o.pickup : o.dest).split(' — ')[0]);
+  let h = '<div class="oc-in"><div class="oc-bar"><button type="button" class="oc-back" data-act="oc-close">' + (live ? OCI.map + ' Ver mapa' : '← Volver') + '</button><b>Orden de compra</b><span class="oc-fol">' + folio(o.id) + '</span></div><div class="oc-body">';
+  h += '<div class="oc-st"><span class="chip ' + esc(st.cls) + '">' + esc(st.t.split(' · ')[0]) + '</span></div>';
+  h += '<div class="oc-sec"><div class="oc-k">Recoger en</div><div class="oc-n">' + esc(o.shop || 'Restaurante') + '</div><div class="oc-a">' + esc(o.pickup || '') + '</div></div>';
+  if (live && asig) {
+    h += code ? '<div class="oc-code"><small>Código para el restaurante</small><b>' + esc(code) + '</b><span>' + (rel ? '✅ El restaurante ya liberó tu pedido.' : '⏳ Dáselo al restaurante para que libere tu pedido.') + '</span></div>'
+      : (rel ? '<div class="oc-ok">✅ Pedido liberado.</div>' : '<div class="oc-ok wait">⏳ Preparando tu código…</div>');
+  } else if (live && reco) h += '<div class="oc-ok">✅ Pedido liberado y recogido.</div>';
+  h += '<div class="oc-sec"><div class="oc-k">Entregar a</div><div class="oc-n">' + esc(o.cliente || 'Cliente') + '</div>' + (o.tel ? '<div class="oc-a">' + esc(o.tel) + '</div>' : '') +
+    '<div class="oc-a">' + esc(dp.dir) + '</div>' + (dp.ref ? '<div class="oc-ref">Referencia: ' + esc(dp.ref) + '</div>' : '') + (pdesc(o).t ? '<div class="oc-ref">Lleva: ' + esc(pdesc(o).t) + '</div>' : '') + '</div>';
+  h += ocMoney(o);
+  if (ro && (o.estado === 'cancelado' || o.liberado)) h += '<div class="oc-box"><div class="oc-h">Por qué no se entregó</div><div class="oc-a">' + esc(noReason(o) || 'Sin detalle.') + '</div></div>';
+  if (live) {
+    h += '<div class="oc-h2">Ruta ' + (asig ? 'al restaurante' : 'al cliente') + '</div><div class="oc-btns">' +
+      '<a class="oc-b" href="' + esc(nav) + '" target="_blank" rel="noopener">' + OCI.nav + '<span>Google Maps</span></a>' +
+      '<button type="button" class="oc-b" data-act="oc-close">' + OCI.map + '<span>Navegar en la app</span></button></div>';
+    if (o.tel) h += '<div class="oc-btns two"><a class="oc-b flat" href="tel:' + esc(String(o.tel).replace(/[^\d+]/g, '')) + '">' + OCI.tel + '<span>Llamar</span></a>' + (wa ? '<a class="oc-b flat" href="' + esc(wa) + '" target="_blank" rel="noopener">' + OCI.wa + '<span>WhatsApp</span></a>' : '') + '</div>';
+    if (reco) h += '<button type="button" class="oc-b wide" data-act="noans" data-id="' + esc(o.id) + '">⌛ El cliente no responde</button>';
+    if (reco) h += '<button type="button" class="oc-b wide" data-act="libcode" data-id="' + esc(o.id) + '">🔑 Tengo un código de administración</button>';
+    h += '<button type="button" class="oc-b wide" data-act="issue" data-id="' + esc(o.id) + '">🛟 Soporte · Tengo un problema</button>';
+  }
+  h += '</div>';
+  if (live) h += '<div class="oc-foot">' + (asig ? (rel ? slHtml('picked', o.id, 'Desliza: ya tengo el pedido', false) : slHtml('picked', o.id, 'Espera: el restaurante debe liberarlo', true)) : (isCamino(o.id) ? slHtml('delivered', o.id, 'Desliza: marcar entregado', false) : slHtml('camino', o.id, 'Desliza: en camino', false))) + '</div>';
+  return h + '</div>';
+}
+function ocOv() {
+  let ov = document.getElementById('ocOv');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'ocOv'; ov.hidden = true; document.body.appendChild(ov); }
+  return ov;
+}
+function ocFab() {
+  let f = document.getElementById('gmOrd');
+  if (!f) { f = document.createElement('button'); f.id = 'gmOrd'; f.type = 'button'; f.className = 'gm-ord'; f.setAttribute('data-act', 'oc-open'); f.hidden = true; f.textContent = '🧾 Ver orden'; document.body.appendChild(f); }
+  const a = view() === 'rider' && !S.oc && S.tab === 'disp' && !S.sheetId ? mine().filter((x) => x.estado === 'asignado' || x.estado === 'recogido').sort((x, y) => (y.asignadoEn || 0) - (x.asignadoEn || 0))[0] : null;
+  f.hidden = !a; if (a) f.setAttribute('data-id', a.id);
+  f.style.position = 'fixed';
+}
+function ocSync() {
+  ocFab();
+  const ov = ocOv(), o = S.oc ? byId(S.oc) : null;
+  const ok = !!o && view() === 'rider' && (S.ocRo || (o.driverId === S.uid && (o.estado === 'asignado' || o.estado === 'recogido')));
+  if (!ok) {
+    if (S.oc && o && !S.ocRo && o.estado === 'entregado') { /* terminó el viaje: la orden desaparece */ }
+    S.oc = null; if (!ov.hidden) { ov.hidden = true; ov.innerHTML = ''; ov.dataset.h = ''; } document.body.classList.remove('oc-on'); return;
+  }
+  const h = ocHtml(o, S.ocRo);
+  if (ov.dataset.h !== h) { const sc = ov.querySelector('.oc-body'), top = sc ? sc.scrollTop : 0; ov.innerHTML = h; ov.dataset.h = h; const nb = ov.querySelector('.oc-body'); if (nb) nb.scrollTop = top; }
+  ov.hidden = false; document.body.classList.add('oc-on');
+}
+function slFire(key, id) {
+  if (key === 'picked') picked(id);
+  else if (key === 'camino') { S.camino = S.camino || {}; S.camino[id] = true; lsSet('gasca_cam_' + id, '1'); S.oc = null; UI_goMap(id); render(); }
+  else if (key === 'delivered') askCode(id);
+}
+function UI_goMap(id) { try { const u = window.__gmap; if (u) { u.fitKey = ''; } S.tab = 'disp'; } catch (e) {} }
+(function () {
+  let cur = null;
+  document.addEventListener('pointerdown', (e) => {
+    const h = e.target.closest && e.target.closest('.sl-h'); if (!h) return;
+    const sl = h.parentNode; if (sl.classList.contains('lock')) { toast('Espera a que el restaurante libere el pedido.'); return; }
+    e.preventDefault(); cur = { sl, h, x0: e.clientX, max: Math.max(10, sl.clientWidth - h.offsetWidth - 8), id: e.pointerId, dx: 0 };
+    try { h.setPointerCapture(e.pointerId); } catch (x) {} sl.classList.add('drag');
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (!cur || e.pointerId !== cur.id) return;
+    cur.dx = Math.max(0, Math.min(cur.max, e.clientX - cur.x0)); cur.h.style.transform = 'translateX(' + cur.dx + 'px)'; cur.sl.style.setProperty('--p', (cur.dx / cur.max * 100) + '%');
+  });
+  const end = (e) => {
+    if (!cur || e.pointerId !== cur.id) return; const c = cur; cur = null; c.sl.classList.remove('drag');
+    if (c.dx >= c.max * 0.85) { c.h.style.transform = 'translateX(' + c.max + 'px)'; slFire(c.sl.dataset.sl, c.sl.dataset.id); setTimeout(() => { if (c.h.isConnected) { c.h.style.transform = ''; c.sl.style.setProperty('--p', '0%'); } }, 900); }
+    else { c.h.style.transform = ''; c.sl.style.setProperty('--p', '0%'); }
+  };
+  document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
+  document.addEventListener('keydown', (e) => { const sl = e.target.closest && e.target.closest('.sl'); if (sl && (e.key === 'Enter' || e.key === ' ') && !sl.classList.contains('lock')) { e.preventDefault(); slFire(sl.dataset.sl, sl.dataset.id); } });
+  const st = document.createElement('style');
+  st.textContent = '#ocOv{position:fixed;inset:0;z-index:22;background:var(--bg);display:flex;justify-content:center}#ocOv[hidden]{display:none}.oc-in{width:100%;max-width:520px;display:flex;flex-direction:column;height:100%}' +
+    '.oc-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;background:var(--surface);border-bottom:1px solid var(--line);font-size:17px}.oc-back{display:flex;align-items:center;gap:6px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;padding:8px 12px;font-weight:800;font-size:15px}.oc-fol{font-weight:800;color:var(--muted)}' +
+    '.oc-body{flex:1;overflow:auto;padding:14px 14px 20px;display:flex;flex-direction:column;gap:12px}.oc-st .chip{font-size:14px}.oc-sec{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}.oc-k{font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}.oc-n{font-size:21px;font-weight:800;margin-top:2px}.oc-a{font-size:16.5px;margin-top:2px}.oc-ref{font-size:14.5px;color:var(--muted);margin-top:3px}' +
+    '.oc-code{background:#16202a;color:#fff;border-radius:16px;padding:14px;text-align:center}.oc-code small{display:block;opacity:.8;font-size:14px}.oc-code b{display:block;font-size:46px;letter-spacing:10px;margin:4px 0;color:#ffd24a}.oc-code span{font-size:15px;font-weight:700}' +
+    '.oc-ok{background:color-mix(in srgb,var(--green) 16%,var(--surface));color:var(--green);border-radius:14px;padding:12px 14px;font-weight:800}.oc-ok.wait{background:#fff4d6;color:#8a5a00}' +
+    '.oc-box{background:var(--surface2);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:7px}.oc-h{font-weight:800;font-size:17px}.oc-pay{background:color-mix(in srgb,var(--green) 16%,var(--surface));color:var(--green);font-weight:800;border-radius:10px;padding:10px 12px;font-size:16px}.oc-pay2{color:#c2620a;font-weight:800;font-size:15.5px}.oc-l{display:flex;justify-content:space-between;gap:10px;font-size:16px}.oc-l b{white-space:nowrap}.oc-tot{display:flex;justify-content:space-between;font-size:21px;font-weight:800;margin-top:2px}.oc-com{font-size:13.5px;color:var(--muted)}' +
+    '.oc-h2{font-weight:800;font-size:17px;margin-top:4px}.oc-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}.oc-btns.two{grid-template-columns:1fr 1fr}.oc-b{display:flex;align-items:center;justify-content:center;gap:10px;min-height:58px;padding:8px 10px;border:1.5px solid var(--line);background:var(--surface);color:var(--amber-fg);border-radius:14px;font-weight:800;font-size:16px;text-decoration:none;text-align:left}.oc-b.flat{border:0;background:none;justify-content:flex-start}.oc-b.wide{width:100%;justify-content:center}.oc-b svg{flex:none}' +
+    '.oc-foot{padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line)}' +
+    '.sl{position:relative;height:66px;border-radius:99px;background:color-mix(in srgb,#f08c00 22%,var(--surface));border:2.5px solid #f08c00;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none;overflow:hidden}.sl::before{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--p,0%);background:rgba(240,140,0,.35)}.sl-t{position:relative;font-weight:800;font-size:18px;color:#a8530a;padding-left:56px}.sl-h{position:absolute;left:4px;top:4px;bottom:4px;width:54px;border-radius:50%;background:#f08c00;display:grid;place-items:center;touch-action:none;cursor:grab;box-shadow:0 2px 6px rgba(0,0,0,.3)}.sl:not(.drag) .sl-h{transition:transform .2s}.sl.lock{border-color:#b8b8b8;background:var(--surface2)}.sl.lock .sl-h{background:#b0b0b0;cursor:not-allowed}.sl.lock .sl-t{color:var(--muted);font-size:15.5px}' +
+    '.gm-ord{position:absolute;right:12px;bottom:96px;border:0;background:#16202a;color:#fff;border-radius:99px;padding:11px 18px;font-weight:800;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,.45)}.gm-ord[hidden]{display:none}.gm-attr{bottom:70px!important}.gm-chip{background:#fff4d6!important;border:1.5px solid #f0b429}' +
+    '.mp-ver{margin-top:10px;width:100%;border:1.5px solid var(--line);background:var(--surface);color:var(--amber-fg);border-radius:12px;padding:10px;font-weight:800;font-size:15px}.lb-box{margin-top:6px}';
+  document.head.appendChild(st);
+})();
+
+
 async function accept(id) {
   if (!canAct() || S.busy.has(id) || view() !== 'rider') return;
   if (!S.online) { toast('Conéctate para aceptar pedidos.'); return; }
@@ -728,7 +850,8 @@ async function accept(id) {
     });
     beep([660, 990]);
     toast('Es tuyo. Ve por el pedido ' + folio(id) + '.');
-    S.tab = 'viajes'; S.queue = S.queue.filter((x) => x !== id);
+    S.tab = 'disp'; S.oc = id; S.ocRo = false; S.queue = S.queue.filter((x) => x !== id);
+    try { const cd = gen4(); S.retiros = S.retiros || {}; S.retiros[id] = cd; let k = 0; for (;;) { try { await setDoc(doc(db, 'retiros', id), { driverId: S.uid, shopId: (oo && oo.shopId) || (raw && raw.shopId) || '', codigo: cd, creadoEn: Date.now() }); break; } catch (e2) { if (++k >= 2) { S.retFail = true; break; } } } } catch (e3) { S.retFail = true; }
     if (S.sheetId === id) { S.sheetId = null; clearTimeout(S.sheetT); }
   } catch (e) {
     if (e && e.message === 'taken') toast('Otro repartidor lo tomó primero.');
@@ -741,6 +864,7 @@ async function accept(id) {
 async function picked(id) {
   const o = byId(id);
   if (!canAct() || !o || o.driverId !== S.uid || o.estado !== 'asignado' || S.busy.has(id)) return;
+  if (!isReleased(o)) { toast('Espera: el restaurante debe liberar el pedido con tu código.'); return; }
   S.busy.add(id); render();
   try { await updateDoc(doc(db, 'orders', id), { estado: 'recogido', recogidoEn: Date.now() }); toast('Marcado como recogido.'); }
   catch (e) { toast('No se pudo actualizar. Intenta de nuevo.'); }
@@ -1111,6 +1235,7 @@ function shopCard(o) {
     s += '<div class="codebox"><small>Código de entrega · dáselo a tu cliente</small><b>' + esc(cod) + '</b><span>El repartidor lo necesita para terminar la entrega.</span>' +
       (wa ? '<a class="btn ghost small" target="_blank" rel="noopener" href="' + esc(wa + '?text=' + encodeURIComponent('Tu código de entrega es ' + cod + '. Dáselo al repartidor cuando llegue.')) + '">Enviar por WhatsApp</a>' : '') + '</div>';
   }
+  if (o.estado === 'asignado') s += isRel(o) ? '<div class="lb-box status">✅ Ya liberaste este pedido.</div>' : '<div class="lb-box"><button class="btn primary block" type="button" data-act="liberar" data-id="' + esc(o.id) + '">🔓 Liberar pedido (código del repartidor)</button></div>';
   if (o.estado === 'entregado') s = '<div class="status">Entregado por <b>' + esc(o.driverName || 'el repartidor') + '</b></div>';
   let act = '';
   if (o.estado === 'abierto') {
@@ -1231,7 +1356,7 @@ function renderMisPedidos(el, my) {
     const com = canc ? 0 : comC(o) / 100, gan = canc ? 0 : (Number(o.tarifa) || 0) - com;
     return '<article class="mp-card"><div class="mp-top"><b>' + esc(o.shop || 'Negocio') + '</b><span style="color:' + st[1] + '">' + st[0] + '</span></div>' +
       '<div class="mp-sol">Solicitud ' + folio(o.id) + '</div><div class="mp-fh">' + fmtFH(o.entregadoEn || o.canceladoEn || o.creadoEn) + '</div>' +
-      '<div class="mp-dir">' + esc(destParts(o.dest).dir) + '</div><div class="mp-money"><b>Ganancia: ' + pesos(gan) + '</b><span>Comisión por usar la app: ' + pesos(com) + '</span></div></article>';
+      '<div class="mp-dir">' + esc(destParts(o.dest).dir) + '</div><div class="mp-money"><b>Ganancia: ' + pesos(gan) + '</b><span>Comisión por usar la app: ' + pesos(com) + '</span></div><button type="button" class="mp-ver" data-act="oc-ro" data-id="' + esc(o.id) + '">Ver orden de compra</button></article>';
   };
   const h = '<h2 class="mp-title">Mis pedidos</h2><div class="mp-sub">Entregas Gasca (' + fin.length + ')</div>' + (fin.length ? fin.slice(0, S.mpN || 50).map(card).join('') : '<p class="hint">Aquí aparecerán tus pedidos entregados.</p>') +
     (fin.length > (S.mpN || 50) ? '<button type="button" class="btn ghost block" data-act="mp-more">Ver más (' + (fin.length - (S.mpN || 50)) + ' anteriores)</button>' : '');
@@ -1241,10 +1366,10 @@ function renderEnCurso(el, list) {
   const card = (o, i) => {
     const wait = i > 0, st = wait ? ['En espera', 'var(--amber-fg)'] : ['En curso', 'var(--blue)'];
     const com = comC(o) / 100, gan = (Number(o.tarifa) || 0) - com;
-    return '<article class="mp-card mp-go" role="button" tabindex="0" data-act="tab" data-tab="viajes"><div class="mp-top"><b>' + esc(o.shop || 'Negocio') + '</b><span style="color:' + st[1] + '">' + (wait ? 'Pedido en espera' : 'Pedido en curso') + '</span></div>' +
+    return '<article class="mp-card mp-go" role="button" tabindex="0" data-act="oc-open" data-id="' + esc(o.id) + '"><div class="mp-top"><b>' + esc(o.shop || 'Negocio') + '</b><span style="color:' + st[1] + '">' + (wait ? 'Pedido en espera' : 'Pedido en curso') + '</span></div>' +
       '<div class="mp-sol">Solicitud ' + folio(o.id) + '</div><div class="mp-fh">' + fmtFH(o.asignadoEn || o.creadoEn) + '</div>' +
       '<div class="mp-dir">' + esc(destParts(o.dest).dir) + '</div><div class="mp-money"><b>Pago por el envío: ' + m2(o.tarifa) + '</b><span>Ganancia: ' + m2(gan) + '</span><span>Comisión por usar la app: ' + m2(com) + '</span></div>' +
-      '<div class="mp-hint">Toca para ver el mapa y los pasos</div></article>';
+      '<div class="mp-hint">Toca para ver la orden de compra</div></article>';
   };
   const h = list.length ? list.map(card).join('') : '<p class="hint" style="text-align:center;margin-top:30px">No tienes pedidos en curso.</p>';
   const w = '<div style="padding-top:22px">' + h + '</div>';
@@ -1623,6 +1748,7 @@ function render() {
   { const hm = !!S.user && (v === 'shop' || v === 'rider'); who.classList.toggle('has-menu', hm); const lb = hm ? '☰ Menú' : 'Salir'; if (who.textContent !== lb) who.textContent = lb; }
   if (S.user) whoSet(v === 'admin' ? (S.isAgent ? 'Soporte · ' + S.agentName : 'Dueño') : (S.name ? (isCli(S.profile) ? 'Envío personal · ' : { shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + (S.role === 'rider' && S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') + ' · ' : '') + S.name : 'Salir'));
   renderBanner();
+  try { ocSync(); } catch (e) { console.warn('orden', e); }
   if (v !== 'shop') { const wd = document.getElementById('wzDone'); if (wd) wd.remove(); }
   if (v !== 'rider') { S.sheetId = null; if (!$('#sheet').hidden) { $('#sheet').hidden = true; S.sheetKey = ''; } }
   let tabs = null;
@@ -1775,6 +1901,11 @@ document.addEventListener('click', (e) => {
   else if (act === 'undel') setBaja(id, false);
   else if (act === 'susp-yes') resolveAlta(id, false, 'Cuenta suspendida por la administración.');
   else if (act === 'zoom') openZoom(b.getAttribute('src'));
+  else if (act === 'oc-open') { S.oc = id; S.ocRo = false; render(); }
+  else if (act === 'oc-ro') { S.oc = id; S.ocRo = true; render(); }
+  else if (act === 'oc-close') { S.oc = null; S.ocRo = false; if (S.tab !== 'saldo') S.tab = 'disp'; render(); }
+  else if (act === 'liberar') askLiberar(id);
+  else if (act === 'ad-lib') adLiberar(id);
   else if (act === 'picked') picked(id);
   else if (act === 'delivered') askCode(id);
   else if (act === 'issue') askIssue(id);
@@ -2257,6 +2388,25 @@ function askNoAns(id) {
   draw();
   timer = setInterval(() => { if (!document.getElementById('issueModal')) { clearInterval(timer); return; } if (t0 && !sending) { const l = document.getElementById('naLeft'); const left = t0 + wait - Date.now(); if (left <= 0) draw(); else if (l) l.textContent = fmt(left); } }, 1000);
 }
+function askLiberar(id) {
+  const o = byId(id);
+  if (!o || o.estado !== 'asignado' || document.getElementById('issueModal')) return;
+  const m = document.createElement('div'); m.id = 'issueModal'; document.body.appendChild(m);
+  m.innerHTML = '<div class="box"><h3>🔓 Liberar pedido</h3><p>Pídele al repartidor su código de 4 números y escríbelo aquí. Así sabemos que es el repartidor correcto.</p><input id="lbIn" type="text" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="----"><div class="err" id="lbErr"></div><button class="btn primary" type="button" id="lbGo">Liberar</button><button class="btn ghost" type="button" id="lbNo">Cancelar</button></div>';
+  const inp = document.getElementById('lbIn'); inp.focus(); inp.addEventListener('input', () => { inp.value = inp.value.replace(/\D/g, '').slice(0, 4); });
+  document.getElementById('lbNo').addEventListener('click', closeIssue);
+  document.getElementById('lbGo').addEventListener('click', async () => {
+    const v = inp.value, er = document.getElementById('lbErr'); if (v.length !== 4) { er.textContent = 'Son 4 números.'; return; }
+    const b = document.getElementById('lbGo'); b.disabled = true;
+    try { await setDoc(doc(db, 'liberados', id), { shopId: S.uid, driverId: o.driverId || '', codigoIn: v, creadoEn: Date.now() }); S.libres = Object.assign({}, S.libres || {}, { [id]: o.driverId || '-' }); toast('Pedido liberado.'); closeIssue(); render(); }
+    catch (e) { er.textContent = 'Código incorrecto. Revísalo con el repartidor.'; b.disabled = false; }
+  });
+}
+async function adLiberar(id) {
+  const o = byId(id); if (!o) return;
+  try { await setDoc(doc(db, 'liberados', id), { driverId: o.driverId || '', shopId: o.shopId || '', porSoporte: true, creadoEn: Date.now() }); toast('Pedido liberado.'); }
+  catch (e) { toast('No se pudo liberar.'); }
+}
 function askLib(id) {
   const o = byId(id);
   if (!canAct() || !o || o.driverId !== S.uid || o.estado !== 'recogido' || document.getElementById('issueModal')) return;
@@ -2341,6 +2491,7 @@ function orderBlock(o, x) {
     (o && dp.ref ? '<div class="line"><span class="k">Referencia</span><span class="v">' + esc(dp.ref) + '</span></div>' : '') +
     (o && o.driverName ? '<div class="line"><span class="k">Repartidor</span><span class="v">' + esc(o.driverName) + '</span></div>' : '') +
     '<div class="line"><span class="k">Estado del pedido</span><span class="v"><b>' + esc(st.t) + '</b></span></div>' +
+    (o && o.estado === 'asignado' ? (isRel(o) ? '<div class="line"><span class="k">Liberación</span><span class="v">✅ Liberado</span></div>' : '<button class="btn ghost small block" type="button" data-act="ad-lib" data-id="' + esc(o.id) + '">🔓 Liberar pedido (soporte)</button>') : '') +
     (o && (o.estado === 'cancelado' || (o.estado === 'entregado' && o.liberado)) ? '<div class="line"><span class="k">Por qué no se entregó</span><span class="v">' + esc(noReason(o)) + '</span></div>' : '');
 }
 function spDiv() {
