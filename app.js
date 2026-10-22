@@ -3,7 +3,7 @@ import { FIREBASE_CONFIG, OWNER_EMAIL } from './firebase-config.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {
   getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  signOut, sendEmailVerification, sendPasswordResetEmail, reload
+  signOut, sendEmailVerification, sendPasswordResetEmail, reload, setPersistence, browserLocalPersistence, browserSessionPersistence
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
   initializeFirestore, doc, getDoc, getDocs, setDoc, updateDoc, collection, query, where,
@@ -1564,7 +1564,7 @@ document.addEventListener('click', (e) => {
   const act = b.getAttribute('data-act'), id = b.getAttribute('data-id');
   if (act === 'menu') { if (confirm('¿Cerrar sesión?')) doSignOut(); }
   else if (act === 'signout') doSignOut();
-  else if (act === 'mode-login') { setMode('login'); }
+  else if (act === 'mode-login') { if (window.__LN) { window.__LN.on = true; if (window.__WC) window.__WC.on = false; } setMode('login'); }
   else if (act === 'mode-signup') { [...af.querySelectorAll('input[name=role]')].forEach((r) => { r.checked = false; }); setMode('signup'); }
   else if (act === 'mode-owner') { setMode('owner'); }
   else if (act === 'owner-create') ownerCreate();
@@ -2568,7 +2568,7 @@ function delivNotice(o) {
     if (!S.ready) return; clearInterval(t);
     try { history.replaceState(null, '', location.pathname); } catch (e) {}
     if (S.user) return;
-    const go = () => { if (window.__WC) window.__WC.on = false; setMode('owner'); $('#a-email').readOnly = false; $('#a-email').value = em; $('#a-email').readOnly = true; try { window.scrollTo(0, 0); } catch (e) {} };
+    const go = () => { if (window.__WC) window.__WC.on = false; if (window.__LN) window.__LN.on = false; setMode('owner'); $('#a-email').readOnly = false; $('#a-email').value = em; $('#a-email').readOnly = true; try { window.scrollTo(0, 0); } catch (e) {} };
     go(); setTimeout(go, 400);
   }, 100);
 })();
@@ -2576,7 +2576,8 @@ function delivNotice(o) {
 /* ---------- pantalla de bienvenida (primera pantalla) ---------- */
 (function () {
   const va = document.getElementById('viewAuth'); if (!va) return;
-  const WC = { on: true }; window.__WC = WC;
+  const WC = { on: false }; window.__WC = WC;
+  const LN = { on: true }; window.__LN = LN;
   const off = () => lsGet('gasca_nowelcome') === '1';
   const cards = [['shop', '🏪', 'Para negocios', 'Soy tienda o restaurante', '#f6b400'], ['rider', '🛵', 'Repartidor', 'Cuido tu pedido y entrego en tiempo y forma', '#1f9d55'], ['cliente', '📦', 'Para envíos personales', 'Quiero enviar algo', '#2b7de9']];
   const st = document.createElement('style');
@@ -2599,6 +2600,7 @@ function delivNotice(o) {
   box.addEventListener('click', (e) => {
     const b = e.target.closest('[data-wc]'); if (!b) return;
     const v = b.getAttribute('data-wc'); WC.on = false;
+    if (v === 'login') LN.on = true;
     if (v === 'login' || v === 'owner') setMode(v);
     else { setMode('signup'); const r = af.querySelector('input[name=role][value=' + v + ']'); if (r) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); } }
     sync(); try { window.scrollTo(0, 0); } catch (er) {}
@@ -2609,19 +2611,19 @@ function delivNotice(o) {
     if (view() !== 'auth' || S.user) return;
     const now = Date.now(); mkN = (now - mkT < 1500) ? mkN + 1 : 1; mkT = now;
     if (mkN < 3) return; mkN = 0;
-    WC.on = false; setMode('owner'); sync(); try { window.scrollTo(0, 0); } catch (er) {}
+    WC.on = false; LN.on = false; setMode('owner'); sync(); try { window.scrollTo(0, 0); } catch (er) {}
   });
-  back.addEventListener('click', () => { WC.on = true; setMode('login'); sync(); try { window.scrollTo(0, 0); } catch (er) {} });
+  back.addEventListener('click', () => { WC.on = true; LN.on = false; setMode('login'); sync(); try { window.scrollTo(0, 0); } catch (er) {} });
   let hadUser = false;
   function sync() {
     const u = !!S.user;
-    if (hadUser && !u && !off()) { WC.on = true; if (S.authMode !== 'login') setMode('login'); }
+    if (hadUser && !u && !off()) { LN.on = true; WC.on = false; if (S.authMode !== 'login') setMode('login'); }
     hadUser = u;
     const isAuth = view() === 'auth' && S.authMode === 'login' || (view() === 'auth' && WC.on);
-    const show = !off() && WC.on && view() === 'auth' && S.authMode === 'login';
+    const show = !off() && WC.on && !LN.on && view() === 'auth' && S.authMode === 'login';
     if (show && !va.classList.contains('wc-on')) { try { window.scrollTo(0, 0); document.scrollingElement.scrollTop = 0; } catch (er) {} }
     va.classList.toggle('wc-on', show);
-    va.classList.toggle('wc-back', !off() && !WC.on && view() === 'auth' && S.authMode !== 'profile');
+    va.classList.toggle('wc-back', !off() && !WC.on && !LN.on && view() === 'auth' && S.authMode !== 'profile');
   }
   // pantalla "Entrar" más amigable (solo cuando existe la bienvenida)
   const lst = document.createElement('style');
@@ -2633,13 +2635,98 @@ function delivNotice(o) {
   hero.innerHTML = '<div class="lg-hero"><div class="wc-road"><div class="wc-ride">' + DELIV_SVG + '</div></div></div>';
   document.getElementById('authTitle').before(hero);
   function lgSync() {
-    const on = !off() && !WC.on && view() === 'auth' && S.authMode === 'login';
+    const on = !off() && !WC.on && !LN.on && view() === 'auth' && S.authMode === 'login';
     va.classList.toggle('lg-on', on);
     if (on) { $('#authTitle').textContent = '¡Hola de nuevo!'; $('#authLede').textContent = 'Entra con tu correo o tu teléfono y tu contraseña.'; $('#a-pass').placeholder = 'Tu contraseña'; }
   }
   setInterval(lgSync, 250);
   setInterval(sync, 250);
 })();
+
+/* ---------- primera pantalla: Iniciar sesión (teléfono + contraseña) ---------- */
+(function () {
+  const va = document.getElementById('viewAuth'); if (!va || !window.__LN) return;
+  const LN = window.__LN, WC = window.__WC;
+  const off = () => lsGet('gasca_nowelcome') === '1';
+  const COUNTRIES = 'MX|México|52;US|Estados Unidos|1;CA|Canadá|1;GT|Guatemala|502;BZ|Belice|501;SV|El Salvador|503;HN|Honduras|504;NI|Nicaragua|505;CR|Costa Rica|506;PA|Panamá|507;CU|Cuba|53;DO|República Dominicana|1;PR|Puerto Rico|1;CO|Colombia|57;VE|Venezuela|58;EC|Ecuador|593;PE|Perú|51;BO|Bolivia|591;CL|Chile|56;AR|Argentina|54;UY|Uruguay|598;PY|Paraguay|595;BR|Brasil|55;ES|España|34;PT|Portugal|351;FR|Francia|33;IT|Italia|39;DE|Alemania|49;GB|Reino Unido|44;IE|Irlanda|353;NL|Países Bajos|31;BE|Bélgica|32;CH|Suiza|41;AT|Austria|43;SE|Suecia|46;NO|Noruega|47;DK|Dinamarca|45;FI|Finlandia|358;PL|Polonia|48;RO|Rumania|40;UA|Ucrania|380;RU|Rusia|7;TR|Turquía|90;GR|Grecia|30;IL|Israel|972;AE|Emiratos Árabes|971;SA|Arabia Saudita|966;EG|Egipto|20;MA|Marruecos|212;ZA|Sudáfrica|27;NG|Nigeria|234;KE|Kenia|254;IN|India|91;PK|Pakistán|92;CN|China|86;JP|Japón|81;KR|Corea del Sur|82;PH|Filipinas|63;VN|Vietnam|84;TH|Tailandia|66;ID|Indonesia|62;MY|Malasia|60;SG|Singapur|65;AU|Australia|61;NZ|Nueva Zelanda|64'.split(';').map((x) => { const a = x.split('|'); return { iso: a[0], name: a[1], dial: a[2] }; });
+  const flag = (iso) => String.fromCodePoint(...iso.split('').map((c) => 127397 + c.charCodeAt(0)));
+  const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  let cc = COUNTRIES[0], mailMode = false;
+  const st = document.createElement('style');
+  st.textContent = '#lnBox{display:none}.ln-on #lnBox{display:block}.ln-on #authTitle,.ln-on #authLede,.ln-on #authForm,.ln-on #authLinks,.ln-on #installHint,.ln-on #wcBack,.ln-on #wcBox{display:none!important}body.ln-body .top{display:none}' +
+    '#lnBox{padding:22px 0 30px;animation:wcin .4s ease both}.ln-logo{text-align:center;margin:8px 0 26px;user-select:none;-webkit-user-select:none}.ln-mark{width:92px;height:92px;margin:0 auto;border-radius:28px;background:#f6b400;display:grid;place-items:center;color:#16202a;box-shadow:0 8px 22px rgba(246,180,0,.4)}.ln-mark svg{width:56px;height:56px}.ln-name{margin-top:10px;font-family:"Barlow Condensed",system-ui,sans-serif;font-weight:700;font-size:20px;letter-spacing:4px;text-transform:uppercase;color:#16202a}' +
+    '.ln-title{font-size:34px;font-weight:800;color:#0d141b;margin:0 0 18px;font-family:"Barlow Condensed",system-ui,sans-serif}' +
+    '.ln-field{position:relative;display:flex;align-items:center;background:#fff;border:2px solid var(--line,#d5dbe3);border-radius:16px;min-height:58px;margin-bottom:14px}.ln-field:focus-within{border-color:#16202a}.ln-field input{flex:1;min-width:0;border:0;background:none;font:inherit;font-size:18px;padding:14px 12px;color:#16202a;outline:none}.ln-field input::placeholder{color:#c3c9d1}' +
+    '.ln-cc{flex:none;display:flex;align-items:center;gap:6px;border:0;background:none;font:inherit;font-size:17px;font-weight:700;padding:0 4px 0 14px;height:54px;color:#16202a;border-right:2px solid var(--line,#e3e7ec)}.ln-cc i{font-style:normal;font-size:12px;opacity:.6}' +
+    '.ln-lock{flex:none;margin-left:14px;color:#c3c9d1;display:grid}.ln-lock svg{width:22px;height:22px}.ln-field .pw-eye{position:static;transform:none;margin-right:4px;flex:none}' +
+    '.ln-row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:2px 0 18px}.ln-rem{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:#16202a}.ln-rem input{width:22px;height:22px;accent-color:#16202a}.ln-link{background:none;border:0;font:inherit;color:#16202a;cursor:pointer;padding:6px 0}.ln-row .ln-link{font-size:14px;font-weight:600}.ln-link.u{text-decoration:underline;font-weight:800}' +
+    '.ln-reg{text-align:center;margin:18px 0 6px;font-size:16px;color:#16202a}.ln-alt{display:block;margin:10px auto 0;font:inherit;font-size:14px;color:#6b7683;text-decoration:underline;background:none;border:0;padding:8px 12px}' +
+    '#lnCcSheet{position:fixed;inset:0;z-index:9999;background:rgba(10,15,20,.55);display:flex;align-items:flex-end}#lnCcSheet .sh{background:#fff;width:100%;max-height:82vh;border-radius:22px 22px 0 0;display:flex;flex-direction:column;padding:16px 16px 10px}#lnCcSheet h3{margin:0 0 10px;font-size:20px}#lnCcSheet input{font:inherit;font-size:17px;border:2px solid var(--line,#d5dbe3);border-radius:14px;padding:12px;margin-bottom:8px}#lnCcSheet .ls{overflow:auto;flex:1}#lnCcSheet .it{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid #eef0f3;font:inherit;font-size:17px;padding:13px 4px;color:#16202a}#lnCcSheet .it b{margin-left:auto}';
+  document.head.appendChild(st);
+  const box = document.createElement('div'); box.id = 'lnBox';
+  const MARK = '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="23" r="4"/><circle cx="25" cy="23" r="4"/><path d="M8 23l5-9h6l3 9M19 14l-2-5h4M13 14H9"/></svg>';
+  const LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+  const EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 19C5 19 1 12 1 12a18.5 18.5 0 0 1 5.06-5.94"/><path d="M9.9 4.24A10.9 10.9 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>';
+  box.innerHTML = '<div class="ln-logo" id="lnLogo"><div class="ln-mark">' + MARK + '</div><div class="ln-name">Gasca</div></div>' +
+    '<h1 class="ln-title">Iniciar sesión</h1>' +
+    '<form id="lnForm" novalidate>' +
+    '<div class="ln-field" id="lnTelRow"><button type="button" class="ln-cc" id="lnCc"><span id="lnFlag"></span><span id="lnDial"></span><i>▼</i></button><input id="ln-tel" name="username" type="tel" inputmode="numeric" autocomplete="username" maxlength="16" placeholder="Número de teléfono"></div>' +
+    '<div class="ln-field" id="lnMailRow" hidden><input id="ln-mail" name="username" type="email" autocomplete="username" maxlength="80" placeholder="Correo electrónico" style="padding-left:16px"></div>' +
+    '<div class="ln-field"><span class="ln-lock">' + LOCK + '</span><input id="ln-pass" name="password" type="password" autocomplete="current-password" maxlength="100" placeholder="Contraseña"><button type="button" class="pw-eye" id="lnEye" aria-label="Mostrar contraseña">' + EYE + '</button></div>' +
+    '<p class="warn" id="lnErr" role="alert" hidden></p>' +
+    '<div class="ln-row"><label class="ln-rem"><input type="checkbox" id="ln-rem" checked> Recordarme</label><button type="button" class="ln-link" id="lnForgot">¿Olvidaste tu contraseña?</button></div>' +
+    '<button class="btn primary block" type="submit" id="lnGo">Iniciar sesión</button></form>' +
+    '<p class="ln-reg">¿Aún no tienes cuenta? <button type="button" class="ln-link u" id="lnReg">Registrarme</button></p>' +
+    '<button type="button" class="ln-alt" id="lnAlt">Entrar con correo</button>';
+  document.getElementById('authTitle').before(box);
+  const $l = (id) => document.getElementById(id);
+  function paintCc() { $l('lnFlag').textContent = flag(cc.iso); $l('lnDial').textContent = '+' + cc.dial; }
+  paintCc();
+  setTimeout(() => { try { const t = lsGet('gasca_ln_tel'); if (t) { const a = t.split('|'); const c = COUNTRIES.find((x) => x.iso === a[0]); if (c) { cc = c; paintCc(); } $l('ln-tel').value = a[1] || ''; $l('ln-rem').checked = true; } } catch (e) {} }, 0);
+  $l('lnEye').addEventListener('click', () => { const inp = $l('ln-pass'), show = inp.type === 'password'; inp.type = show ? 'text' : 'password'; $l('lnEye').innerHTML = show ? OFF : EYE; $l('lnEye').setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña'); });
+  $l('lnCc').addEventListener('click', () => {
+    const sh = document.createElement('div'); sh.id = 'lnCcSheet';
+    sh.innerHTML = '<div class="sh"><h3>Código de país</h3><input id="lnCcQ" type="search" placeholder="Buscar país o código" autocomplete="off"><div class="ls" id="lnCcL"></div><button type="button" class="btn ghost block" id="lnCcX" style="margin-top:8px">Cerrar</button></div>';
+    document.body.appendChild(sh);
+    const draw = () => { const q = norm($l('lnCcQ').value).replace(/^\+/, ''); $l('lnCcL').innerHTML = COUNTRIES.filter((c) => !q || norm(c.name).indexOf(q) >= 0 || c.dial.indexOf(q) === 0).map((c) => '<button type="button" class="it" data-iso="' + c.iso + '"><span>' + flag(c.iso) + '</span><span>' + esc(c.name) + '</span><b>+' + c.dial + '</b></button>').join('') || '<p class="hint">No hay resultados.</p>'; };
+    draw(); $l('lnCcQ').addEventListener('input', draw);
+    sh.addEventListener('click', (e) => { const it = e.target.closest('.it'); if (it) { cc = COUNTRIES.find((c) => c.iso === it.getAttribute('data-iso')) || cc; paintCc(); sh.remove(); } else if (e.target === sh || e.target.id === 'lnCcX') sh.remove(); });
+    setTimeout(() => { try { $l('lnCcQ').focus(); } catch (e) {} }, 50);
+  });
+  $l('lnAlt').addEventListener('click', () => { mailMode = !mailMode; $l('lnTelRow').hidden = mailMode; $l('lnMailRow').hidden = !mailMode; $l('lnAlt').textContent = mailMode ? 'Entrar con teléfono' : 'Entrar con correo'; S.authErr = ''; });
+  $l('lnReg').addEventListener('click', () => { LN.on = false; WC.on = true; S.authErr = ''; setMode('login'); try { window.scrollTo(0, 0); } catch (e) {} });
+  const ident = () => mailMode ? $l('ln-mail').value.trim().toLowerCase() : $l('ln-tel').value.replace(/\D/g, '').slice(-10);
+  $l('lnForgot').addEventListener('click', () => { const id = ident(); $('#a-email').value = id; if (!mailMode && id.length < 10) { S.authErr = 'Escribe tu teléfono arriba y vuelve a tocar "¿Olvidaste tu contraseña?".'; return; } resetPass(); });
+  $l('lnForm').addEventListener('submit', async (e) => {
+    e.preventDefault(); if (S.authBusy) return;
+    const id = ident(), pw = $l('ln-pass').value, rem = $l('ln-rem').checked;
+    if (!mailMode && id.length < 10) { S.authErr = 'Escribe tu número de teléfono de 10 dígitos.'; return; }
+    if (mailMode && id.indexOf('@') < 1) { S.authErr = 'Escribe tu correo.'; return; }
+    if (!pw) { S.authErr = 'Escribe tu contraseña.'; return; }
+    try { if (rem) lsSet('gasca_ln_tel', mailMode ? '' : cc.iso + '|' + id); else { localStorage.removeItem('gasca_ln_tel'); } } catch (er) {}
+    try { await setPersistence(auth, rem ? browserLocalPersistence : browserSessionPersistence); } catch (er) {}
+    S.authErr = ''; setMode('login');
+    $('#a-email').value = id; $('#a-pass').value = pw;
+    af.requestSubmit ? af.requestSubmit() : af.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+  });
+  let mkN = 0, mkT = 0;
+  $l('lnLogo').addEventListener('click', () => {
+    const now = Date.now(); mkN = (now - mkT < 1500) ? mkN + 1 : 1; mkT = now;
+    if (mkN < 3) return; mkN = 0;
+    LN.on = false; WC.on = false; setMode('owner'); try { window.scrollTo(0, 0); } catch (er) {}
+  });
+  function lnSync() {
+    const show = !off() && LN.on && view() === 'auth' && S.authMode === 'login';
+    va.classList.toggle('ln-on', show); document.body.classList.toggle('ln-body', show);
+    if (!show) return;
+    const er = $l('lnErr'), t = S.authErr || '';
+    if (er.textContent !== t) { er.textContent = t; er.hidden = !t; }
+    $l('lnGo').disabled = !!S.authBusy;
+  }
+  setInterval(lnSync, 200);
+})();
+
 
 /* ---------- zonas de trabajo (por colonia) ---------- */
 const nrm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
