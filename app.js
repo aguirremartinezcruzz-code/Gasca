@@ -941,6 +941,7 @@ function copyCode(c) {
 }
 
 /* ---------- aviso de pedido nuevo (hoja inferior) ---------- */
+const OFFER_MS = 40000;
 function syncSheet() {
   if (!S.online || view() !== 'rider') { S.sheetId = null; S.sheetTaken = null; clearTimeout(S.sheetT); renderSheet(); return; }
   if (S.sheetTaken) { renderSheet(); return; }
@@ -959,8 +960,9 @@ function syncSheet() {
   while (S.queue.length) {
     const id = S.queue[0], o = byId(id);
     if (!o || o.estado !== 'abierto' || S.ignored.has(id) || !canTake(o)) { S.queue.shift(); continue; }
-    S.sheetId = id; clearTimeout(S.sheetT);
-    S.sheetT = setTimeout(() => { S.ignored.add(id); S.queue = S.queue.filter((x) => x !== id); S.sheetId = null; syncSheet(); }, 25000);
+    S.sheetId = id; S.sheetAt = Date.now(); clearTimeout(S.sheetT);
+    S.sheetT = setTimeout(() => { S.ignored.add(id); S.queue = S.queue.filter((x) => x !== id); S.sheetId = null; syncSheet(); }, OFFER_MS);
+    if (view() === 'rider' && S.tab !== 'disp') { S.tab = 'disp'; setTimeout(() => { try { render(); } catch (e) {} }, 0); }
     break;
   }
   renderSheet();
@@ -975,17 +977,40 @@ function renderSheet(force) {
   if (!o) { el.hidden = true; el.innerHTML = ''; return; }
   const busy = S.busy.has(o.id);
   el.hidden = false;
+  const com = comC(o) / 100, gan = (Number(o.tarifa) || 0) - com, r = window.__gmap && window.__gmap.route;
+  const dtxt = r && r.oid === o.id && r.m ? offerKm(r) : '';
   el.innerHTML =
-    '<div class="sheet-in" role="alertdialog" aria-label="Pedido nuevo">' +
-    '<div class="timer" aria-hidden="true"><i></i></div>' +
-    '<div class="sheet-title"><span class="pulse" aria-hidden="true"></span>Pedido nuevo <span class="folio">' + folio(o.id) + '</span></div>' +
-    '<div class="money"><div class="fare">' + pesos(o.tarifa) + '<small>por el envío</small></div>' +
-    '<div class="cash">' + (Number(o.cobro) > 0 ? 'Cobrar <b>' + pesos(o.cobro) + '</b>' : 'Sin cobro') + '</div></div>' +
-    '<div class="line"><span class="k">Recoger en</span><span class="v">' + esc(o.shop) + ' · ' + esc(o.pickup) + '</span></div>' +
-    '<div class="line"><span class="k">Entregar en</span><span class="v">' + esc(o.dest) + '</span></div>' + distLine(o) + payNote(o) +
-    offerBtns(o) + '<div class="actions"><button class="btn ghost" type="button" data-act="ignore" data-id="' + esc(o.id) + '">Ignorar</button>' +
-    '<button class="btn primary" type="button" data-act="accept" data-id="' + esc(o.id) + '"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Aceptando…' : 'Aceptar') + '</button></div></div>';
+    '<div class="sheet-in of" role="alertdialog" aria-label="Pedido nuevo">' +
+    '<div class="of-shop">' + esc(o.shop || 'Restaurante') + '</div>' +
+    '<div class="of-top"><div><small>Tu ganancia</small><b class="of-gan">' + m2(gan) + '</b></div><div class="of-d"><b id="shKm">' + esc(dtxt) + '</b><small>Hasta el restaurante</small></div></div>' +
+    offerBox(o) + offerBtns(o) +
+    '<div class="of-com">Comisión por usar la app ' + m2(com) + '</div>' +
+    '<div class="of-act"><button class="of-no" type="button" data-act="ignore" data-id="' + esc(o.id) + '">Rechazar</button>' +
+    '<button class="of-ok" type="button" data-act="accept" data-id="' + esc(o.id) + '"' + (busy ? ' disabled' : '') + '><i class="of-bar"></i><span class="of-t">' + (busy ? 'Aceptando…' : 'Aceptar') + '</span></button></div></div>';
+  tickOffer();
 }
+function offerKm(r) { return (r.m < 1000 ? Math.round(r.m / 10) * 10 + ' m' : (r.m / 1000).toFixed(1) + ' km') + ' · ~' + Math.max(1, Math.round(r.s / 60)) + ' min'; }
+function offerBox(o) {
+  const d = pdesc(o), T = pesos(o.tarifa), P = pesos(d.prod), rec = d.quien === 'r', rows = [];
+  const row = (ic, cls, t) => '<div class="of-r ' + cls + '"><span>' + ic + '</span><span>' + t + '</span></div>';
+  if (d.tipo === 'v') rows.push(row('🏪', 'pay', 'Tienes que pagar al restaurante ' + P + ' (pago en efectivo).'));
+  if (d.tipo === 'p') rows.push(row('✅', 'pay', 'El producto ya está pagado: no pagues ni cobres el producto.'));
+  rows.push(row('⏳', 'wait', 'Espera a que el restaurante libere tu pedido.'));
+  if (d.tipo === 'v') rows.push(row('💵', 'get', rec ? 'Con el cliente: cobra ' + pesos(d.prod + Number(o.tarifa)) + ' (' + P + ' + ' + T + ' de envío).' : 'Con el cliente: cobra ' + P + '. El envío (' + T + ') te lo paga quien envía.'));
+  else if (d.tipo) rows.push(row('💵', 'get', rec ? 'Con el cliente: cobra ' + T + ' de envío.' : 'Quien envía te paga ' + T + ' de envío. No cobres nada al entregar.'));
+  else rows.push(row('💵', 'get', Number(o.cobro) > 0 ? 'Con el cliente: cobra ' + pesos(o.cobro) + '.' : 'Sin cobro con el cliente.'));
+  return '<div class="of-box">' + rows.join('') + '</div>';
+}
+function tickOffer() {
+  const el = document.getElementById('sheet'); if (!el || el.hidden || !S.sheetId) return;
+  const b = el.querySelector('.of-ok'); if (!b) return;
+  const el0 = Date.now() - (S.sheetAt || Date.now()), left = Math.max(0, Math.ceil((OFFER_MS - el0) / 1000));
+  const t = b.querySelector('.of-t'), bar = b.querySelector('.of-bar');
+  if (t && !b.disabled) { const x = 'Aceptar · ' + left + ' s'; if (t.textContent !== x) t.textContent = x; }
+  b.classList.toggle('late', left <= 10);
+  if (bar) bar.style.width = Math.min(100, el0 / OFFER_MS * 100) + '%';
+}
+setInterval(tickOffer, 250);
 
 /* ---------- pantallas ---------- */
 const emptyBox = (title, text) => '<div class="empty"><b>' + esc(title) + '</b><span>' + esc(text) + '</span></div>';
@@ -1296,7 +1321,7 @@ function renderRider() {
   if (S.tab === 'disp') {
     av.innerHTML = !S.openReady ? '' : (open.length ? '<div class="subhead">Pedidos disponibles (' + open.length + ')</div>' + open.map(availCard).join('') : '');
   }
-  try { window.__mapSync && window.__mapSync({ active, act0: active.length ? active[active.length - 1] : null, done, doneToday }); } catch (e) { console.warn('mapa', e); }
+  try { window.__mapSync && window.__mapSync({ offer: S.sheetId ? byId(S.sheetId) : null, active, act0: active.length ? active[active.length - 1] : null, done, doneToday }); } catch (e) { console.warn('mapa', e); }
   if (S.tab === 'viajes') {
     const wk = new Date(); wk.setHours(0, 0, 0, 0); wk.setDate(wk.getDate() - ((wk.getDay() + 6) % 7));
     const nWeek = done.filter((o) => (o.entregadoEn || o.creadoEn || 0) >= wk.getTime()).length;
@@ -1598,6 +1623,7 @@ function render() {
   { const hm = !!S.user && (v === 'shop' || v === 'rider'); who.classList.toggle('has-menu', hm); const lb = hm ? '☰ Menú' : 'Salir'; if (who.textContent !== lb) who.textContent = lb; }
   if (S.user) whoSet(v === 'admin' ? (S.isAgent ? 'Soporte · ' + S.agentName : 'Dueño') : (S.name ? (isCli(S.profile) ? 'Envío personal · ' : { shop: 'Tienda · ', rider: 'Repartidor · ' }[S.role] || '') + (S.role === 'rider' && S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') + ' · ' : '') + S.name : 'Salir'));
   renderBanner();
+  if (v !== 'shop') { const wd = document.getElementById('wzDone'); if (wd) wd.remove(); }
   if (v !== 'rider') { S.sheetId = null; if (!$('#sheet').hidden) { $('#sheet').hidden = true; S.sheetKey = ''; } }
   let tabs = null;
   if (v === 'verify') renderVerify();
@@ -1909,18 +1935,20 @@ document.addEventListener('click', (e) => {
       else if (UI.follow) map.setView(S.pos.lat, S.pos.lon);
     } else { map.delMarker('me'); if (!UI.placed && !S.pos) map.setView(TEPIC[0], TEPIC[1], 13); }
     // pedido activo: ruta
-    const o = ctx.act0, chip = document.getElementById('gmChip');
+    const offer = ctx.offer && ctx.offer.estado === 'abierto' ? ctx.offer : null, o = offer || ctx.act0, chip = document.getElementById('gmChip');
     if (!o) { map.setRoute(null); map.delMarker('pick'); map.delMarker('dest'); UI.route = null; UI.routeKey = ''; UI.fitKey = ''; if (UI.chip) { UI.chip = ''; chip.hidden = true; chip.innerHTML = ''; } return; }
-    const pk = o.estado === 'asignado' ? ptOf(o.pickup) : null, ds = ptOf(o.dest), me = on && S.pos ? [S.pos.lat, S.pos.lon] : null;
+    const pk = (offer || o.estado === 'asignado') ? ptOf(o.pickup) : null, ds = ptOf(o.dest), me = on && S.pos ? [S.pos.lat, S.pos.lon] : null;
     if (pk) map.setMarker('pick', pk[0], pk[1], mkPick, 'pick'); else map.delMarker('pick');
     if (ds) map.setMarker('dest', ds[0], ds[1], mkDest, 'dest'); else map.delMarker('dest');
     const wps = [me, pk, ds].filter(Boolean), target = pk || ds;
     if (wps.length >= 2) {
       const key = o.id + o.estado + '|' + wps.map((p) => p[0].toFixed(3) + ',' + p[1].toFixed(3)).join('|');
       if (key !== UI.routeKey && (!UI.route || Date.now() - UI.lastFetch > 15000 || UI.fitKey !== o.id + o.estado)) { UI.routeKey = key; if (UI.fitKey !== o.id + o.estado) UI.route = null; fetchRoute(wps, key); }
-      if (UI.route) map.setRoute(UI.route.pts);
-      const fk = o.id + o.estado; if (UI.fitKey !== fk) { UI.fitKey = fk; UI.follow = false; map.fit(wps, { t: 160, b: 210 }); }
+      if (UI.route) { map.setRoute(UI.route.pts); UI.route.oid = o.id; }
+      const fk = o.id + o.estado; if (UI.fitKey !== fk) { UI.fitKey = fk; UI.follow = false; let bb = 210; if (offer) { const sh = document.getElementById('sheet'), mr = UI.wrap.getBoundingClientRect(); bb = Math.max(60, mr.bottom - (window.innerHeight - (sh ? sh.offsetHeight : 0)) + 36); } map.fit(wps, { t: offer ? 90 : 160, b: bb }); }
     }
+    const km = document.getElementById('shKm'); if (km) put(km, offer && UI.route && UI.route.m ? offerKm(UI.route) : (km.textContent || ''));
+    if (offer) { if (UI.chip) { UI.chip = ''; chip.hidden = true; chip.innerHTML = ''; } return; }
     const r = UI.route, lbl = o.estado === 'asignado' ? 'Recoger: ' + (o.shop || 'restaurante') : 'Entregar: ' + (destParts(o.dest).dir || '').slice(0, 40);
     const extra = r && r.m ? ' · ' + (r.m < 1000 ? Math.round(r.m / 10) * 10 + ' m' : (r.m / 1000).toFixed(1) + ' km') + ' · ' + Math.max(1, Math.round(r.s / 60)) + ' min' : '';
     const nav = target ? 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + llTxt(target) : mapsUrl(o.estado === 'asignado' ? o.pickup : o.dest);
@@ -1942,7 +1970,12 @@ document.addEventListener('click', (e) => {
     '.gm-pw{position:absolute;left:12px;bottom:80px;width:86px;height:86px;border-radius:50%;border:4px solid #fff;background:#1fa855;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;box-shadow:0 4px 14px rgba(0,0,0,.5)}.gm-pw.on{background:#e53935}.gm-pw b{font-size:9.5px;letter-spacing:0;font-weight:800;white-space:nowrap}.gm-pw svg{width:30px;height:30px}' +
     '.gm-stats{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;gap:12px;background:rgba(10,12,16,.94);color:#fff;border-radius:18px;padding:12px 14px;font-size:15.5px;white-space:nowrap}.gm-stats b{flex:1;font-weight:800;min-width:0}.gm-stats em{font-style:normal;opacity:.75;font-size:14.5px}.gm-ic{display:grid;place-items:center}' +
     '.gm-attr{position:absolute;right:8px;bottom:82px;font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;background:rgba(0,0,0,.35);padding:1px 5px;border-radius:5px}' +
-    '.map-on #modeBar{display:none!important}';
+    '.map-on #modeBar{display:none!important}' +
+    '.sheet{bottom:0!important;padding-inline:0!important;z-index:25!important}.sheet-in.of{max-width:520px;border:0;border-radius:24px 24px 0 0;padding:16px 16px calc(14px + env(safe-area-inset-bottom,0px));gap:0;box-shadow:0 -6px 24px rgba(0,0,0,.3)}' +
+    '.of-shop{font-weight:800;font-size:17px;margin-bottom:8px}.of-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.of-top small{color:var(--muted);font-size:14px}.of-gan{display:block;font-size:44px;line-height:1.05;color:var(--green)}.of-d{text-align:right;padding-top:4px}.of-d b{display:block;font-size:19px}.of-d small{display:block;margin-top:2px}' +
+    '.of-box{margin-top:12px;background:#fff4d6;border:1.5px solid #f0b429;border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;color:#16202a}.of-r{display:flex;gap:10px;font-size:16px;line-height:1.3;font-weight:600}.of-r.pay{color:#c2620a;font-weight:800}.of-r.get{color:#2e7d32;font-weight:800}.of-r>span:first-child{flex:none;width:24px;text-align:center}' +
+    '.of-com{text-align:center;color:var(--muted);font-size:14px;margin-top:10px}.of-act{display:flex;gap:10px;margin-top:10px}.of-no{flex:0 0 34%;min-height:58px;border-radius:16px;border:1.5px solid var(--line);background:var(--surface);color:var(--amber-fg);font-weight:800;font-size:17px}' +
+    '.of-ok{position:relative;overflow:hidden;flex:1;min-height:58px;border-radius:16px;border:0;background:#2e8b3d;color:#fff;font-weight:800;font-size:21px}.of-ok.late{background:#d63030}.of-ok:disabled{opacity:.75}.of-bar{position:absolute;right:0;top:0;bottom:0;width:0;background:rgba(255,255,255,.55)}.of-t{position:relative}';
   document.head.appendChild(st);
 })();
 
@@ -2785,6 +2818,7 @@ function wzDone(id) {
   const close = (toast2, tab) => { clearInterval(wzDoneT); wzDoneT = null; d.remove(); S.tab = tab || 'pedidos'; if (toast2) toast(toast2); render(); };
   d.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-wzd]')) close(); });
   wzDoneT = setInterval(() => {
+    if (view() !== 'shop') { clearInterval(wzDoneT); wzDoneT = null; d.remove(); return; }
     const o = byId(id);
     if (!o) { if (Date.now() - t0 > 6000) close(); return; }
     if (o.estado === 'asignado' || o.estado === 'recogido' || o.estado === 'entregado') {
