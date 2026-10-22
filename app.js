@@ -1473,7 +1473,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '22-oct-2026 · 6';
+const APP_V = '22-oct-2026 · 7';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -3387,7 +3387,7 @@ const modoKey = () => 'gasca_modo_' + S.uid;
 function rMode() { return 'cerca'; }
 function geoCached(txt) { const c = geoLoad(), k = nrm(txt); if (k in c) return c[k]; if (GEO.fail.has(k)) return null; return undefined; }
 function nearOk(o) {
-  if (!S.pos) return !S.online;
+  if (!S.pos) return true; /* sin GPS aún: mejor mostrar el pedido que esconderlo */
   const pt = geoCached(o.pickup);
   if (pt === undefined) {
     const k = nrm(o.pickup);
@@ -3671,6 +3671,7 @@ function tarFor(km) {
     const want = view() === 'rider' && S.online && rMode() === 'cerca' && 'geolocation' in navigator;
     if (want && watchId === null) {
       try { watchId = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 15000, timeout: 25000 }); } catch (e) { S.posErr = 'fail'; }
+      try { navigator.geolocation.getCurrentPosition(onPos, function () {}, { enableHighAccuracy: false, maximumAge: 600000, timeout: 15000 }); } catch (e) {} /* ubicación rápida por red mientras llega el GPS */
     } else if (!want && watchId !== null) {
       try { navigator.geolocation.clearWatch(watchId); } catch (e) {} watchId = null;
       if (view() !== 'rider' || !S.online) { S.pos = null; last = null; }
