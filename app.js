@@ -60,7 +60,7 @@ function stopAll() { unsubs.forEach((f) => { try { f(); } catch (e) {} }); unsub
 
 function resetData() {
   Object.assign(S, {
-    profile: null, profileReady: false, role: null, name: '', addr: '', myAprob: null, aprReady: false, fotos: {},
+    cambio: null, cambios: [],     profile: null, profileReady: false, role: null, name: '', addr: '', myAprob: null, aprReady: false, fotos: {},
     consent: false, verEdit: false, uploading: {}, perm: false, dbErr: false, tab: '',
     incs: [], incReady: false, ofertas: [], ofKnown: null, minOffer: 0, incMine: new Set(), regRead: false, regOk: false, regTop: 0, codes: {}, orders: [], openOrders: [], myOrders: [], known: new Set(), openReady: false, prev: new Map(),
     wallet: null, walletReady: false, movs: [], recargas: [], pago: '', pagoDirty: false,
@@ -448,6 +448,14 @@ function startPerson() {
     if (S.profile) { S.role = S.profile.role; S.name = S.profile.name || ''; S.addr = isCli(S.profile) ? '' : (S.profile.addr || ''); if (!S.tab) S.tab = S.role === 'rider' ? 'disp' : 'nuevo'; }
     syncRole(); render();
   });
+  unsubs.push(onSnapshot(doc(db, 'cambiosPerfil', S.uid), (s) => {
+    const was = S.cambio; S.cambio = s.exists() ? s.data() : null;
+    if (was && was.estado === 'pendiente' && S.cambio) {
+      if (S.cambio.estado === 'aprobado') { beep([660, 990]); toast('Tus cambios de perfil fueron aprobados.'); }
+      else if (S.cambio.estado === 'rechazado') toast('La administración no aprobó tus cambios de perfil.');
+    }
+    render();
+  }, () => {}));
   listen(unsubs, doc(db, 'aprobaciones', S.uid), (s) => {
     const was = S.aprReady ? myStatus() : '';
     S.myAprob = s.exists() ? s.data() : null; S.aprReady = true;
@@ -724,6 +732,7 @@ function startAdmin() {
   listen(unsubs, query(collection(db, 'users'), limit(500)), (snap) => { S.users = snap.docs.map((d) => d.data()).filter((u) => u && u.id && u.role && u.name); render(); });
   listen(unsubs, query(collection(db, 'aprobaciones'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = d.data(); }); S.aprobs = m; render(); assignRepNos(); });
   if (!S.isAgent) listen(unsubs, query(collection(db, 'recargas'), orderBy('creadoEn', 'desc'), limit(300)), (snap) => { S.recargas = snap.docs.map((d) => d.data()).filter((r) => r && r.id && r.estado); render(); });
+  if (!S.isAgent) unsubs.push(onSnapshot(query(collection(db, 'cambiosPerfil'), limit(200)), (snap) => { S.cambios = snap.docs.map((d) => d.data()).filter((c) => c && c.uid); render(); }, () => {}));
   if (!S.isAgent) listen(unsubs, query(collection(db, 'agentes'), limit(50)), (snap) => { S.agentes = snap.docs.map((d) => d.data()).filter((a) => a && a.email); render(); });
   listen(unsubs, query(collection(db, 'wallets'), limit(500)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = d.data(); }); S.wallets = m; render(); });
   if (!S.isAgent) listen(unsubs, query(collection(db, 'movs'), orderBy('creadoEn', 'desc'), limit(1000)), (snap) => { S.movs = snap.docs.map((d) => d.data()); render(); });
@@ -1379,7 +1388,7 @@ function renderShop() {
   { const cli = isCli(S.profile), pk = $('#o-pick'), box = pk.closest('.field'), pf = $('#pickFields');
     if (box) box.hidden = cli; pk.required = !cli;
     if (pf) { pf.hidden = !cli; ['p-calle', 'p-col', 'p-ciudad', 'p-mun'].forEach((i) => { $('#' + i).required = cli; }); } }
-  if (!isCli(S.profile) && !$('#o-pick').value && S.addr && document.activeElement !== $('#o-pick')) $('#o-pick').value = S.addr;
+  if (!isCli(S.profile) && S.addr && document.activeElement !== $('#o-pick') && (!$('#o-pick').value || $('#o-pick').value === window.__pickFrom)) { $('#o-pick').value = S.addr; window.__pickFrom = S.addr; }
   return [{ id: 'nuevo', label: 'Nuevo pedido' }, { id: 'pedidos', label: 'Mis pedidos', badge: active.length }, { id: 'historial', label: 'Historial' }];
 }
 
@@ -1473,7 +1482,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '22-oct-2026 · 9';
+const APP_V = '22-oct-2026 · 10';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -1698,6 +1707,32 @@ function renderMonitor() {
   el.innerHTML = h;
 }
 
+function cambioCard(c) {
+  const u = S.users.find((x) => x.id === c.uid) || {}, busy = S.busy.has('cp' + c.uid);
+  const ln = (k, a, b) => (a || '') === (b || '') ? '' : '<div class="line"><span class="k">' + k + '</span><span class="v">' + esc(a || '—') + ' → <b>' + esc(b) + '</b></span></div>';
+  return '<article class="order"><div class="head"><span class="folio">' + esc(repTag(c.uid) + (u.name || c.name)) + '</span><span class="chip abierto">Cambio de perfil</span><span class="ago">' + ago(c.creadoEn) + '</span></div>' +
+    ln('Nombre', u.name, c.name) + ln('Dirección', u.addr, c.addr) +
+    '<div class="field"><label for="cp-motivo-' + esc(c.uid) + '">Motivo si lo rechazas</label><input id="cp-motivo-' + esc(c.uid) + '" type="text" maxlength="160" placeholder="Ej. La dirección no coincide con tu local"></div>' +
+    '<div class="actions"><button class="btn danger small" type="button" data-act="cp-no" data-id="' + esc(c.uid) + '"' + (busy ? ' disabled' : '') + '>Rechazar</button>' +
+    '<button class="btn primary small" type="button" data-act="cp-ok" data-id="' + esc(c.uid) + '"' + (busy ? ' disabled' : '') + '>Aprobar</button></div></article>';
+}
+async function resolveCambio(id, ok) {
+  const k = 'cp' + id, c = (S.cambios || []).find((x) => x.uid === id);
+  if (!S.isAdmin || !c || S.busy.has(k)) return;
+  S.busy.add(k); render();
+  try {
+    if (ok) {
+      await updateDoc(doc(db, 'users', id), { name: c.name, addr: c.addr });
+      await updateDoc(doc(db, 'cambiosPerfil', id), { estado: 'aprobado', en: Date.now() });
+      toast('Cambios aprobados.');
+    } else {
+      const m = ((document.getElementById('cp-motivo-' + id) || {}).value || '').trim().slice(0, 160);
+      await updateDoc(doc(db, 'cambiosPerfil', id), { estado: 'rechazado', motivo: m, en: Date.now() });
+      toast('Cambios rechazados.');
+    }
+  } catch (e) { toast('No se pudo guardar. Intenta de nuevo.'); }
+  S.busy.delete(k); render();
+}
 function altaCard(u) {
   const slots = slotsFor(u), open = S.review === u.id, busy = S.busy.has('al' + u.id);
   const n = Array.isArray(u.fotos) ? u.fotos.length : 0;
@@ -1740,12 +1775,13 @@ async function setBaja(id, baja) {
 }
 function renderAltas() {
   const el = $('#adminAltas');
-  if (document.activeElement && document.activeElement.id === 'a-motivo') return;
+  if (document.activeElement && /^(a-motivo|cp-motivo)/.test(document.activeElement.id || '')) return;
   const all = S.users.map((u) => ({ u, st: personStatus(u, S.aprobs[u.id]) }));
   const rev = all.filter((x) => x.st === 'revision').sort((a, b) => (a.u.docsEn || 0) - (b.u.docsEn || 0));
   const apr = all.filter((x) => x.st === 'aprobado');
   const oth = all.filter((x) => x.st === 'incompleto' || x.st === 'rechazado');
-  let h = '<h2 class="section">Altas</h2><div class="subhead">Por revisar (' + rev.length + ')</div>';
+  const cps = (S.cambios || []).filter((c) => c.estado === 'pendiente').sort((a, b) => (a.creadoEn || 0) - (b.creadoEn || 0));
+  let h = '<h2 class="section">Altas</h2>' + (cps.length ? '<div class="subhead">Cambios de perfil por aprobar (' + cps.length + ')</div>' + cps.map(cambioCard).join('') : '') + '<div class="subhead">Por revisar (' + rev.length + ')</div>';
   h += rev.length ? rev.map((x) => altaCard(x.u)).join('') : '<p class="hint">Nadie está esperando aprobación.</p>';
   h += '<div class="subhead">Aprobados (' + apr.length + ')</div>';
   h += apr.length ? apr.map((x) => {
@@ -1812,7 +1848,7 @@ function renderAdmin() {
   }
   const all = [
     { id: 'monitor', label: 'En vivo', badge: S.orders.filter((o) => o.estado === 'abierto').length },
-    { id: 'altas', label: 'Altas', badge: S.users.filter((u) => personStatus(u, S.aprobs[u.id]) === 'revision').length },
+    { id: 'altas', label: 'Altas', badge: S.users.filter((u) => personStatus(u, S.aprobs[u.id]) === 'revision').length + (S.cambios || []).filter((c) => c.estado === 'pendiente').length },
     { id: 'recargas', label: 'Recargas', badge: pend.length },
     { id: 'pedidos', label: 'Pedidos', badge: S.orders.filter((o) => o.estado === 'asignado' || o.estado === 'recogido').length },
     { id: 'incidencias', label: 'Incidencias', badge: S.incs.filter((x) => x.estado === 'abierta').length },
@@ -2030,6 +2066,8 @@ document.addEventListener('click', (e) => {
   else if (act === 'ver-send') sendDocs();
   else if (act === 'rev-open') openReview(id);
   else if (act === 'rev-close') { S.review = null; S.revPhotos = null; S.motivo = ''; render(); }
+  else if (act === 'cp-ok') resolveCambio(id, true);
+  else if (act === 'cp-no') resolveCambio(id, false);
   else if (act === 'alta-ok') resolveAlta(id, true);
   else if (act === 'alta-no') resolveAlta(id, false, (S.motivo || '').trim());
   else if (act === 'susp') { S.suspId = id; render(); }
@@ -3070,6 +3108,11 @@ function wzInit() {
     for (let i = 0; i < WZ.steps.length - 1; i++) if (!wzValid(i)) { e.preventDefault(); e.stopImmediatePropagation(); wzGo(i); return; }
   }, true);
 }
+function wzMenuVis() {
+  const w = $('#who'); if (!w) return;
+  const hide = !!S.user && view() === 'shop' && S.tab === 'nuevo' && !!$('#shopNew') && !$('#shopNew').hidden && !!$('#orderForm') && $('#orderForm').classList.contains('wz-on') && WZ.step > 0;
+  w.classList.toggle('wz-nomenu', hide);
+}
 function wzSync() {
   const f = $('#orderForm');
   if (!f || !S.profile || view() !== 'shop' || $('#shopNew').hidden) return;
@@ -3084,6 +3127,7 @@ function wzSync() {
   $('#wzBar').style.width = Math.round(((WZ.step + 1) / n) * 100) + '%';
   $('#wzN').textContent = 'Paso ' + (WZ.step + 1) + ' de ' + n;
   $('#wzTitle').innerHTML = (st.ic ? st.ic + ' ' : '') + esc(st.t); $('#wzHint').textContent = st.h;
+  wzMenuVis();
   $('#wzBack').hidden = WZ.step === 0; $('#wzBack').textContent = 'Atrás'; $('#wzNext').hidden = !!st.last;
   const btn = $('#orderBtn'); if (!btn.disabled) btn.textContent = 'Generar pedido';
   if (WZ.dirty) {
@@ -3784,6 +3828,35 @@ function openRecovery() {
   }
   ov.innerHTML = recHtml(false); ov.hidden = false;
 }
+function epHtml(msg) {
+  const c = S.cambio, pend = c && c.estado === 'pendiente';
+  let top = '';
+  if (msg) top = '<p class="rc-st">' + msg + '</p>';
+  else if (pend) top = '<p class="rc-st">⏳ Tus cambios están <b>en revisión</b> por la administración. Mientras tanto se usa tu información actual.</p>';
+  else if (c && c.estado === 'rechazado') top = '<p class="rc-st">❌ No se aprobaron tus últimos cambios' + (c.motivo ? ': <b>' + esc(c.motivo) + '</b>' : '') + '. Puedes corregirlos y enviarlos otra vez.</p>';
+  const nm = pend ? c.name : (c && c.estado === 'rechazado' ? c.name : S.name), ad = pend ? c.addr : (c && c.estado === 'rechazado' ? c.addr : S.addr);
+  return '<div class="rc"><h3>✏️ Editar perfil</h3>' + top + '<p>Los cambios los revisa la administración antes de aplicarse.</p>' +
+    '<form autocomplete="off"><label>Nombre del negocio<input name="name" maxlength="60" value="' + esc(nm || '') + '"></label><label>Dirección del negocio<input name="addr" maxlength="160" placeholder="Calle, número, colonia, ciudad" value="' + esc(ad || '') + '"></label>' +
+    '<p class="rc-er" role="alert"></p><button type="submit" class="btn primary block">' + (pend ? 'Reenviar cambios' : 'Enviar para aprobación') + '</button></form><button type="button" class="btn ghost block" data-ep="close">Cerrar</button></div>';
+}
+function openEditPerfil() {
+  let ov = document.getElementById('epOv');
+  if (!ov) {
+    ov = document.createElement('div'); ov.id = 'epOv'; document.body.appendChild(ov);
+    ov.addEventListener('click', (e) => { if (e.target === ov || (e.target.closest && e.target.closest('[data-ep=close]'))) ov.hidden = true; });
+    ov.addEventListener('submit', async (e) => {
+      e.preventDefault(); const f = e.target, er = f.querySelector('.rc-er'), btn = f.querySelector('button[type=submit]');
+      const name = f.name.value.trim().replace(/\s+/g, ' '), addr = f.addr.value.trim().replace(/\s+/g, ' ');
+      if (name.length < 2) { er.textContent = 'Escribe el nombre del negocio.'; return; }
+      if (addr.length < 8) { er.textContent = 'Escribe la dirección completa: calle, número, colonia y ciudad.'; return; }
+      if (name === (S.name || '') && addr === (S.addr || '')) { er.textContent = 'No cambiaste nada.'; return; }
+      er.textContent = ''; btn.disabled = true; btn.textContent = 'Enviando…';
+      try { await setDoc(doc(db, 'cambiosPerfil', S.uid), { uid: S.uid, name, addr, estado: 'pendiente', creadoEn: Date.now() }); S.cambio = { uid: S.uid, name, addr, estado: 'pendiente', creadoEn: Date.now() }; ov.innerHTML = epHtml('✅ Enviado. La administración lo revisará pronto.'); render(); }
+      catch (x) { er.textContent = 'No se pudo enviar. Intenta de nuevo.'; btn.disabled = false; btn.textContent = 'Enviar para aprobación'; }
+    });
+  }
+  ov.innerHTML = epHtml(''); ov.hidden = false;
+}
 function recHtml(done) {
   const confirmed = !telOf(S.email) && S.recOn;
   let body;
@@ -3798,6 +3871,7 @@ function recHtml(done) {
   const st = document.createElement('style');
   st.textContent = '#recOv{position:fixed;inset:0;z-index:9991;background:rgba(10,15,20,.6);display:flex;align-items:center;justify-content:center;padding:18px;overflow:auto}#recOv[hidden]{display:none}#recOv .rc{background:#fff;color:#16202a;border-radius:22px;max-width:380px;width:100%;padding:20px;display:flex;flex-direction:column;gap:10px}#recOv h3{margin:0;font-size:21px}#recOv p{margin:0;font-size:16px;line-height:1.4}#recOv label{display:flex;flex-direction:column;gap:4px;font-weight:700;font-size:15px;margin-bottom:8px}#recOv input{font:inherit;font-size:17px;border:2px solid #d5dbe3;border-radius:12px;padding:12px;color:#16202a;background:#fff}.rc-er{color:#c0392b;font-weight:700;min-height:0}.rc-st{background:#f2f4f7;border-radius:12px;padding:10px}';
   document.head.appendChild(st);
+  const st2 = document.createElement('style'); st2.textContent = st.textContent.split('#recOv').join('#epOv') + '#epOv .btn.ghost{background:transparent;color:#16202a;border:2px solid #d5dbe3}.who.wz-nomenu{display:none!important}'; document.head.appendChild(st2);
 })();
 
 /* ---------- menú y perfiles múltiples con el mismo correo ---------- */
@@ -3835,7 +3909,7 @@ function recHtml(done) {
     if (mode === 'menu' && i) {
       el.innerHTML = '<div class="gm"><h3>☰ Menú</h3><p>' + esc(S.name || '') + ' · modo ' + LBL[i.cur] + '</p>' +
         (S.menuTabs && view() === 'shop' ? '<div class="gl">Ir a</div>' + S.menuTabs.map((t) => '<button class="' + (S.tab === t.id ? 'cur' : 'tb') + '" data-gm="tab" data-t="' + esc(t.id) + '">' + esc(t.label) + (t.badge ? ' <span class="gbd">' + t.badge + '</span>' : '') + (S.tab === t.id ? ' ✓' : '') + '</button>').join('') : '') +
-        (recEligible() ? '<button class="tb" data-gm="rec">📧 Correo de recuperación</button>' : '') + '<div class="gl">Cambiar de perfil</div>' +
+        (S.role === 'shop' && !isCli(S.profile) ? '<button class="tb" data-gm="edit">✏️ Editar perfil</button>' : '') + (recEligible() ? '<button class="tb" data-gm="rec">📧 Correo de recuperación</button>' : '') + '<div class="gl">Cambiar de perfil</div>' +
         i.opts.map((o, n) => '<button class="sw" data-gm="switch" data-k="' + n + '">🔁 Cambiar a ' + optTxt(o) + '</button>').join('') +
         '<button class="dk" data-gm="out">Cerrar sesión</button><button class="gh" data-gm="close">Cerrar menú</button></div>';
     } else if (mode === 'pass' && pick) {
@@ -3904,6 +3978,7 @@ function recHtml(done) {
     if (a === 'close' || a === 'stay') close();
     else if (a === 'out') { close(); doSignOut(); }
     else if (a === 'rec') { close(); openRecovery(); }
+    else if (a === 'edit') { close(); openEditPerfil(); }
     else if (a === 'tab') { S.tab = b.getAttribute('data-t'); S.cancelId = null; close(); render(); try { window.scrollTo(0, 0); } catch (er) {} }
     else if (a === 'switch' && i && i.opts[k]) choose(i.opts[k]);
     else if (a === 'goto' && chooseOpts[k]) choose(chooseOpts[k]);
@@ -3925,6 +4000,7 @@ function recHtml(done) {
     if (found.length && S.user && S.email === p.email && !mode) { chooseOpts = found; mode = 'choose'; err = ''; paint(); }
   }
   setInterval(() => {
+    try { wzMenuVis(); } catch (e) {}
     const who = $('#who'); if (who) {
       const v = S.user ? view() : '', hm = v === 'shop' || v === 'rider';
       who.classList.toggle('has-menu', hm);
