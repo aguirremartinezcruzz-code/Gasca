@@ -3,7 +3,7 @@ import { FIREBASE_CONFIG, OWNER_EMAIL } from './firebase-config.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {
   getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  signOut, sendEmailVerification, sendPasswordResetEmail, reload, setPersistence, browserLocalPersistence, browserSessionPersistence,
+  signOut, sendEmailVerification, sendPasswordResetEmail, verifyBeforeUpdateEmail, reload, setPersistence, browserLocalPersistence, browserSessionPersistence,
   updatePassword, reauthenticateWithCredential, EmailAuthProvider
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
@@ -242,6 +242,9 @@ const af = $('#authForm');
   const f = document.createElement('div'); f.className = 'field'; f.id = 'fTel'; f.hidden = true;
   f.innerHTML = '<label for="a-tel">Tu teléfono (10 dígitos)</label><input id="a-tel" type="tel" inputmode="numeric" maxlength="14" autocomplete="tel" placeholder="Ej. 3111234567">';
   $('#fEmail').before(f);
+  const g = document.createElement('div'); g.className = 'field'; g.id = 'fRec'; g.hidden = true;
+  g.innerHTML = '<label for="a-rec">Correo para recuperar tu contraseña (opcional)</label><input id="a-rec" type="email" autocomplete="email" placeholder="Ej. nombre@gmail.com"><small style="opacity:.75">Si algún día olvidas tu contraseña, te mandamos el enlace a este correo.</small>';
+  f.after(g);
 })();
 const roleVal = () => (af.elements.role && af.elements.role.value) || '';
 function setMode(m) {
@@ -268,6 +271,7 @@ function setMode(m) {
   $('#authBtn2').hidden = !ow; $('#authBtn2').textContent = 'Crear mi cuenta (dueño o soporte)';
   { const cl = form && roleVal() === 'cliente', rp = su && roleVal() === 'rider';
     $('#fEmail').hidden = pr || cl || rp; $('#fTel').hidden = !(((su || (pr && !telOf(S.email))) && cl) || rp);
+    $('#fRec').hidden = !(su && (cl || rp));
     $('#a-email').type = 'text';
     document.querySelector('label[for="a-email"]').textContent = m === 'login' ? 'Correo o teléfono' : 'Correo';
     if (cl) { $('#lblName').textContent = 'Tu nombre completo'; $('#a-name').placeholder = 'Ej. María López'; }
@@ -333,7 +337,11 @@ af.addEventListener('submit', async (e) => {
       if (m === 'owner' && email.indexOf('@') < 0) return fail('Escribe tu correo.');
       if (m === 'owner' && email !== OWNER) { try { localStorage.setItem('gasca_staff', email); } catch (e) {} }
       setBusy(true);
-      await signInWithEmailAndPassword(auth, email, pass);
+      try { await signInWithEmailAndPassword(auth, email, pass); }
+      catch (e1) {
+        const tl = telOf(email);
+        if (tl && /invalid-credential|user-not-found|wrong-password|invalid-login/.test((e1 && e1.code) || '')) { const mail = await lookupMail(tl); if (mail) { lsSet('gasca_rectel_for_' + mail, tl); lsSet('gasca_realmail_for_' + tl, mail); await signInWithEmailAndPassword(auth, mail, pass); } else throw e1; } else throw e1;
+      }
     } else if (m === 'signup') {
       const pe = needProfile(); if (pe) return fail(pe);
       if (role === 'cliente' || role === 'rider') email = telEmail(tel);
@@ -344,6 +352,7 @@ af.addEventListener('submit', async (e) => {
       setBusy(true); S.creating = true; render();
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
       await createProfile(cred.user.uid, { role, name, addr, tel });
+      { const rm = (($('#a-rec') || {}).value || '').trim().toLowerCase(); if ((role === 'cliente' || role === 'rider') && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rm)) { saveRecovery(rm, pass).catch(() => {}); } }
     } else if (m === 'profile') {
       const pe = needProfile(); if (pe) return fail(pe);
       const ptel = telOf(S.user && S.user.email) || (tel.length === 10 ? tel : '');
@@ -379,7 +388,11 @@ async function ownerResend() {
 }
 async function resetPass() {
   const raw = $('#a-email').value.trim().toLowerCase();
-  if (raw && raw.indexOf('@') < 0 && /^[\d\s+()-]+$/.test(raw)) { S.authErr = 'Si olvidaste tu contraseña, escríbenos por WhatsApp al ' + SUPPORT_TEL + ' y te ayudamos.'; showErr(); return; }
+  if (raw && raw.indexOf('@') < 0 && /^[\d\s+()-]+$/.test(raw)) {
+    const tl = raw.replace(/\D/g, '').slice(-10), mail = tl.length === 10 ? await lookupMail(tl) : '';
+    if (mail) { try { await sendPasswordResetEmail(auth, mail); } catch (e) {} S.authErr = ''; showErr(); toast('Te enviamos un enlace a ' + maskMail(mail) + '. Revisa también spam.'); return; }
+    S.authErr = 'Tu cuenta no tiene correo de recuperación. Escríbenos por WhatsApp al ' + SUPPORT_TEL + ' y te ayudamos.'; showErr(); return;
+  }
   const email = raw;
   if (!email) { S.authErr = 'Escribe tu correo arriba y vuelve a tocar "Olvidé mi contraseña".'; showErr(); return; }
   try { await sendPasswordResetEmail(auth, email); S.authErr = ''; showErr(); toast('Si ese correo tiene cuenta, te enviamos un enlace para cambiar la contraseña.'); }
@@ -1412,6 +1425,7 @@ const PI = {
   bell: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 22a2.3 2.3 0 0 0 2.2-1.7H9.8A2.3 2.3 0 0 0 12 22zm7-5.2V11a7 7 0 0 0-5.5-6.8V3.5a1.5 1.5 0 0 0-3 0v.7A7 7 0 0 0 5 11v5.8l-1.7 1.7v.9h17.4v-.9z"/></svg>',
   lock: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7 10V7a5 5 0 0 1 10 0v3h.5A2.5 2.5 0 0 1 20 12.5v7a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19.5v-7A2.5 2.5 0 0 1 6.5 10zm2 0h6V7a3 3 0 0 0-6 0zm3 4.2a1.6 1.6 0 0 0-.8 3V19h1.6v-1.8a1.6 1.6 0 0 0-.8-3z"/></svg>',
   list: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5a1.4 1.4 0 1 1 2.8 0 1.4 1.4 0 0 1-2.8 0zm5.2-.9h12.6a.9.9 0 0 1 0 1.8H8.2a.9.9 0 0 1 0-1.8zM3 12a1.4 1.4 0 1 1 2.8 0A1.4 1.4 0 0 1 3 12zm5.2-.9h12.6a.9.9 0 0 1 0 1.8H8.2a.9.9 0 0 1 0-1.8zM3 18.5a1.4 1.4 0 1 1 2.8 0 1.4 1.4 0 0 1-2.8 0zm5.2-.9h12.6a.9.9 0 0 1 0 1.8H8.2a.9.9 0 0 1 0-1.8z"/></svg>',
+  mail: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5h18a1 1 0 0 1 1 1v.5l-10 6.5L2 6.5V6a1 1 0 0 1 1-1zm-1 4.1 10 6.5 10-6.5V18a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"/></svg>',
   shield: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12 2 4 5.2v6c0 5 3.4 9.3 8 10.8 4.6-1.5 8-5.8 8-10.8v-6zm-1 6h2v2h-2zm0 4h2v5h-2z"/></svg>',
   out: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H9M16 8l4 4-4 4M20 12H9"/></svg>',
   swap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h14l-3-3M20 16H6l3 3"/></svg>'
@@ -1459,7 +1473,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '22-oct-2026 · 4';
+const APP_V = '22-oct-2026 · 5';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -1468,7 +1482,7 @@ function renderPerfil(el) {
     '<div class="pf-nm">' + esc(S.name || 'Repartidor') + '</div>' + (rno ? '<div class="pf-no"><small>Número de repartidor</small><b>' + esc(rno) + '</b></div>' : '') +
     (S.myThumb ? '' : '<div class="pf-hint">Toca el círculo para subir tu selfie</div>') + '</div>';
   const h = av + pfRow('pf-dark', 'moon', 'Modo oscuro', isDarkNow() ? 'on' : 'off') + pfRow('pf-notif', 'bell', 'Notificaciones', notifOn() ? 'on' : 'off') +
-    pfRow('pf-pass', 'lock', 'Cambiar contraseña') + pfRow('pf-terms', 'list', 'Términos y condiciones') + pfRow('pf-priv', 'shield', 'Política de privacidad') +
+    pfRow('pf-pass', 'lock', 'Cambiar contraseña') + (recEligible() ? pfRow('pf-rec', 'mail', 'Correo de recuperación') : '') + pfRow('pf-terms', 'list', 'Términos y condiciones') + pfRow('pf-priv', 'shield', 'Política de privacidad') +
     (opts ? pfRow('pf-switch', 'swap', 'Cambiar de perfil') : '') + '<button type="button" class="pf-row" data-act="signout" id="pfOut"><span class="pf-i">' + PI.out + '</span><span class="pf-l">Cerrar sesión</span></button><p class="pf-ver">Versión ' + APP_V + '</p>';
   if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
 }
@@ -1978,6 +1992,7 @@ document.addEventListener('click', (e) => {
     else { lsSet('gasca_notif', '1'); Promise.resolve(Notification.requestPermission()).then(() => render()); }
   }
   else if (act === 'pf-pass') pfPass();
+  else if (act === 'pf-rec') openRecovery();
   else if (act === 'pf-terms') pfText('Términos y condiciones', REG_TEXT.split('\n---\n')[0]);
   else if (act === 'pf-priv') pfText('Política de privacidad', REG_TEXT.split('\n---\n')[1] || PRIV_TEXT);
   else if (act === 'mp-more') { S.mpN = (S.mpN || 50) + 50; render(); }
@@ -3728,6 +3743,62 @@ function tarFor(km) {
   window.__gpsState = () => state; window.__gpsRefresh = () => { q(); };
 })();
 
+/* ---------- correo de recuperación (cuentas con teléfono) ---------- */
+const maskMail = (m) => { const [a, d] = String(m || '').split('@'); return a ? a.slice(0, 2) + '***@' + (d || '') : ''; };
+async function lookupMail(tel) { try { const sn = await getDoc(doc(db, 'logins', tel)); const v = sn.exists() ? sn.data() : null; return v && v.mail ? String(v.mail).toLowerCase() : ''; } catch (e) { return ''; } }
+function myTel() { const t = telOf(S.email); if (t) return t; const m = String((S.profile && S.profile.addr) || '').match(/Tel\s*(\d{10})/); return m ? m[1] : ''; }
+async function loadRec() {
+  if (!S.uid || S.recFor === S.uid || !S.user) return; S.recFor = S.uid; S.recOn = false; S.recMail = ''; S.recTel = '';
+  try {
+    const sn = await getDocs(query(collection(db, 'logins'), where('uid', '==', S.uid)));
+    sn.docs.forEach((d) => { const v = d.data(); if (v && v.mail && v.uid === S.uid) { S.recOn = true; S.recMail = String(v.mail).toLowerCase(); S.recTel = d.id; lsSet('gasca_rectel_for_' + S.recMail, d.id); lsSet('gasca_realmail_for_' + d.id, S.recMail); } });
+  } catch (e) {}
+  render();
+}
+setInterval(() => { try { if (S.user && !S.isAdmin && S.profile) loadRec(); } catch (e) {} }, 1500);
+const recEligible = () => !!S.user && !S.isAdmin && (S.recOn || telOf(S.email) || (!S.ownerEmail && /Tel\s*\d{10}/.test((S.profile && S.profile.addr) || '') && !String(S.email).includes('+gasca-')));
+async function saveRecovery(mail, pass) {
+  const u = auth.currentUser; if (!u) throw new Error('nouser');
+  const tel = myTel(); if (!tel) throw new Error('notel');
+  if (pass) { const cr = EmailAuthProvider.credential(u.email, pass); await reauthenticateWithCredential(u, cr); }
+  await setDoc(doc(db, 'logins', tel), { mail, uid: u.uid, creadoEn: Date.now() });
+  try { await verifyBeforeUpdateEmail(u, mail); }
+  catch (e) { try { await updateDoc(doc(db, 'logins', tel), { mail: '' }); } catch (x) {} throw e; }
+  S.recOn = true; S.recMail = mail; S.recTel = tel; S.recFor = S.uid; lsSet('gasca_rectel_for_' + mail, tel); lsSet('gasca_realmail_for_' + tel, mail);
+}
+function openRecovery() {
+  let ov = document.getElementById('recOv');
+  if (!ov) {
+    ov = document.createElement('div'); ov.id = 'recOv'; document.body.appendChild(ov);
+    ov.addEventListener('click', (e) => { if (e.target === ov || (e.target.closest && e.target.closest('[data-rc=close]'))) ov.hidden = true; });
+    ov.addEventListener('submit', async (e) => {
+      e.preventDefault(); const f = e.target, er = f.querySelector('.rc-er'), btn = f.querySelector('button[type=submit]');
+      const mail = f.mail.value.trim().toLowerCase(), pw = f.pw.value;
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)) { er.textContent = 'Ese correo no se ve bien. Revísalo.'; return; }
+      if (!pw) { er.textContent = 'Escribe tu contraseña actual.'; return; }
+      er.textContent = ''; btn.disabled = true; btn.textContent = 'Guardando…';
+      try { await saveRecovery(mail, pw); ov.innerHTML = recHtml(true); render(); }
+      catch (x) { const c = (x && x.code) || ''; er.textContent = /wrong-password|invalid-credential/.test(c) ? 'Esa contraseña no es la tuya.' : c === 'auth/email-already-in-use' ? 'Ese correo ya se usa en otra cuenta. Usa otro.' : c === 'auth/too-many-requests' ? 'Demasiados intentos. Espera unos minutos.' : 'No se pudo guardar. Intenta de nuevo.'; btn.disabled = false; btn.textContent = 'Guardar correo'; }
+    });
+  }
+  ov.innerHTML = recHtml(false); ov.hidden = false;
+}
+function recHtml(done) {
+  const confirmed = !telOf(S.email) && S.recOn;
+  let body;
+  if (done) body = '<p><b>¡Listo!</b> Te mandamos un correo a <b>' + esc(maskMail(S.recMail)) + '</b>. Ábrelo y toca el enlace para <b>confirmar</b>. Hasta entonces no sirve para recuperar la contraseña. Revisa también spam.</p><button type="button" class="btn primary block" data-rc="close">Entendido</button>';
+  else {
+    body = (S.recOn ? '<p class="rc-st">' + (confirmed ? '✅ Correo confirmado: <b>' + esc(maskMail(S.recMail)) + '</b>' : '⏳ Pendiente de confirmar: <b>' + esc(maskMail(S.recMail)) + '</b>. Revisa tu correo y toca el enlace.') + '</p><p>Si quieres cambiarlo, escribe otro:</p>' : '<p>Si algún día olvidas tu contraseña, te mandamos el enlace a este correo, solo a ti.</p>') +
+      '<form autocomplete="off"><label>Tu correo<input name="mail" type="email" autocomplete="email" placeholder="nombre@gmail.com"></label><label>Tu contraseña actual<input name="pw" type="password" autocomplete="current-password"></label><p class="rc-er" role="alert"></p><button type="submit" class="btn primary block">Guardar correo</button></form><button type="button" class="btn ghost block" data-rc="close" style="margin-top:8px">Cerrar</button>';
+  }
+  return '<div class="rc"><h3>📧 Correo de recuperación</h3>' + body + '</div>';
+}
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '#recOv{position:fixed;inset:0;z-index:9991;background:rgba(10,15,20,.6);display:flex;align-items:center;justify-content:center;padding:18px;overflow:auto}#recOv[hidden]{display:none}#recOv .rc{background:#fff;color:#16202a;border-radius:22px;max-width:380px;width:100%;padding:20px;display:flex;flex-direction:column;gap:10px}#recOv h3{margin:0;font-size:21px}#recOv p{margin:0;font-size:16px;line-height:1.4}#recOv label{display:flex;flex-direction:column;gap:4px;font-weight:700;font-size:15px;margin-bottom:8px}#recOv input{font:inherit;font-size:17px;border:2px solid #d5dbe3;border-radius:12px;padding:12px;color:#16202a;background:#fff}.rc-er{color:#c0392b;font-weight:700;min-height:0}.rc-st{background:#f2f4f7;border-radius:12px;padding:10px}';
+  document.head.appendChild(st);
+})();
+
 /* ---------- menú y perfiles múltiples con el mismo correo ---------- */
 (function () {
   const SUF = { shop: '+gasca-negocio', rider: '+gasca-repartidor', cliente: '+gasca-personal' };
@@ -3737,7 +3808,7 @@ function tarFor(km) {
   const NO_MIX = { shop: 'cliente', cliente: 'shop' };
   const parts = (e) => { e = String(e || '').toLowerCase(); const i = e.lastIndexOf('@'); return i < 1 ? null : { l: e.slice(0, i), d: e.slice(i + 1) }; };
   const suffixKind = (e) => { const p = parts(e); if (!p) return ''; return Object.keys(SUF).find((k) => p.l.endsWith(SUF[k])) || ''; };
-  const baseOf = (e) => { const p = parts(e); return p ? p.l.replace(/\+gasca-(negocio|repartidor|personal)$/, '') + '@' + p.d : ''; };
+  const baseOf = (e) => { if (String(e || '').toLowerCase() === S.email && !telOf(S.email)) { const t = lsGet('gasca_rectel_for_' + S.email); if (t) e = t + TEL_DOM; } const p = parts(e); return p ? p.l.replace(/\+gasca-(negocio|repartidor|personal)$/, '') + '@' + p.d : ''; };
   const aliasOf = (e, k) => { const p = parts(baseOf(e)); return p.l + SUF[k] + '@' + p.d; };
   const bkKey = () => 'gasca_bk_' + baseOf(S.email);
   const myKind = () => isCli(S.profile) ? 'cliente' : (S.role === 'rider' || S.role === 'shop' ? S.role : null);
@@ -3763,7 +3834,7 @@ function tarFor(km) {
     if (mode === 'menu' && i) {
       el.innerHTML = '<div class="gm"><h3>☰ Menú</h3><p>' + esc(S.name || '') + ' · modo ' + LBL[i.cur] + '</p>' +
         (S.menuTabs && view() === 'shop' ? '<div class="gl">Ir a</div>' + S.menuTabs.map((t) => '<button class="' + (S.tab === t.id ? 'cur' : 'tb') + '" data-gm="tab" data-t="' + esc(t.id) + '">' + esc(t.label) + (t.badge ? ' <span class="gbd">' + t.badge + '</span>' : '') + (S.tab === t.id ? ' ✓' : '') + '</button>').join('') : '') +
-        '<div class="gl">Cambiar de perfil</div>' +
+        (recEligible() ? '<button class="tb" data-gm="rec">📧 Correo de recuperación</button>' : '') + '<div class="gl">Cambiar de perfil</div>' +
         i.opts.map((o, n) => '<button class="sw" data-gm="switch" data-k="' + n + '">🔁 Cambiar a ' + optTxt(o) + '</button>').join('') +
         '<button class="dk" data-gm="out">Cerrar sesión</button><button class="gh" data-gm="close">Cerrar menú</button></div>';
     } else if (mode === 'pass' && pick) {
@@ -3805,7 +3876,12 @@ function tarFor(km) {
     try {
       if (!gpw() || gpw() !== pass) { if (!(await verifyPass(pass))) return fail('Contraseña incorrecta.'); }
       const carry = S.name; lsSet('gasca_online_' + S.uid, '0');
-      try { await signInWithEmailAndPassword(auth, o.target, pass); window.__carry = ''; }
+      let used = o.target;
+      try {
+        try { await signInWithEmailAndPassword(auth, o.target, pass); }
+        catch (er0) { const tl0 = telOf(o.target), rm0 = tl0 && lsGet('gasca_realmail_for_' + tl0); if (rm0 && i.back) { await signInWithEmailAndPassword(auth, rm0, pass); used = rm0; } else throw er0; }
+        window.__carry = '';
+      }
       catch (e) {
         if (i.back) return fail('No se pudo entrar a ese perfil. Revisa tu contraseña.');
         const bad = NO_MIX[o.kind];
@@ -3813,7 +3889,7 @@ function tarFor(km) {
         try { await createUserWithEmailAndPassword(auth, o.target, pass); window.__carry = carry || ''; }
         catch (e2) { return fail(e2 && e2.code === 'auth/email-already-in-use' ? 'Ese perfil ya existe con otra contraseña. Entra con esa contraseña.' : authMsg(e2)); }
       }
-      S.pw = pass; S.pwFor = o.target; busy = false; close();
+      S.pw = pass; S.pwFor = used; busy = false; close();
     } catch (e) { fail('No se pudo cambiar. Intenta de nuevo.'); }
   }
   window.__gmOpen = () => { mode = 'menu'; err = ''; paint(); }; window.__gmInfo = info;
@@ -3826,6 +3902,7 @@ function tarFor(km) {
     const a = b.getAttribute('data-gm'), i = info(), k = Number(b.getAttribute('data-k'));
     if (a === 'close' || a === 'stay') close();
     else if (a === 'out') { close(); doSignOut(); }
+    else if (a === 'rec') { close(); openRecovery(); }
     else if (a === 'tab') { S.tab = b.getAttribute('data-t'); S.cancelId = null; close(); render(); try { window.scrollTo(0, 0); } catch (er) {} }
     else if (a === 'switch' && i && i.opts[k]) choose(i.opts[k]);
     else if (a === 'goto' && chooseOpts[k]) choose(chooseOpts[k]);
@@ -3859,7 +3936,7 @@ function tarFor(km) {
     if (pend && S.user && S.ready) {
       const v = view(); if (v === 'loading' || v === 'auth') return;
       const p = pend; pend = null;
-      if (S.email === p.email) { S.pw = p.pass; S.pwFor = p.email; if (!suffixKind(S.email)) probe(p); }
+      { const same = S.email === p.email || (!!telOf(p.email) && lsGet('gasca_rectel_for_' + S.email) === telOf(p.email)); if (same) { p.email = S.email; S.pw = p.pass; S.pwFor = S.email; if (!suffixKind(S.email)) probe(p); } }
     }
     window.__aliasProf = false;
     if (S.user && view() === 'profile') {
