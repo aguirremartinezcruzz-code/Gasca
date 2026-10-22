@@ -1172,6 +1172,25 @@ function tripCard(o) {
     (o.estado === 'recogido' ? '<button class="btn primary small block" type="button" data-act="libcode" data-id="' + esc(o.id) + '">🔑 Tengo un código de administración</button>' : '') +
     '<button class="btn ghost small block" type="button" data-act="issue" data-id="' + esc(o.id) + '">Tengo un problema</button></article>';
 }
+function pfDiv() {
+  let el = document.getElementById('riderPerfil');
+  if (!el) { el = document.createElement('div'); el.id = 'riderPerfil'; el.className = 'stack'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref.nextSibling); }
+  return el;
+}
+function renderPerfil(el, nDone) {
+  const tel = (S.profile && /^Tel (\d{10})$/.exec(S.profile.addr || '') || [])[1] || telOf(S.email.replace(/\+gasca-(negocio|repartidor|personal)(?=@)/, ''));
+  const rn = S.myAprob && S.myAprob.repNo ? 'R-' + String(S.myAprob.repNo).padStart(3, '0') : '';
+  let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
+  const h = '<div class="pf-top"><span class="pf-av">' + TI.user + '</span><b>' + esc(S.name || 'Repartidor') + '</b><small>Repartidor' + (rn ? ' · ' + rn : '') + '</small></div>' +
+    '<div class="order"><div class="line"><span class="k">Teléfono</span><span class="v">' + (tel ? esc(tel) : 'No registrado') + '</span></div>' +
+    (S.email && S.email.indexOf('@clientes.gasca.app') < 0 ? '<div class="line"><span class="k">Correo</span><span class="v">' + esc(S.email) + '</span></div>' : '') +
+    '<div class="line"><span class="k">Cuenta</span><span class="v"><b>Aprobada ✓</b></span></div>' +
+    '<div class="line"><span class="k">Viajes entregados</span><span class="v"><b>' + nDone + '</b></span></div></div>' +
+    '<a class="btn ghost block" target="_blank" rel="noopener" href="' + esc(supportUrl('Hola, soy ' + (S.name || 'repartidor') + (rn ? ' (' + rn + ')' : '') + '. Necesito ayuda con Gasca.')) + '">💬 Hablar con soporte</a>' +
+    (opts ? '<button class="btn ghost block" type="button" data-act="pf-switch">🔁 Cambiar de perfil</button>' : '') +
+    '<button class="btn danger block" type="button" data-act="signout" id="pfOut">Cerrar sesión</button>';
+  if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; }
+}
 function renderRider() {
   const open = S.orders.filter((o) => o.estado === 'abierto').sort((a, b) => (a.creadoEn || 0) - (b.creadoEn || 0));
   const my = mine();
@@ -1194,6 +1213,7 @@ function renderRider() {
     sm.innerHTML = '<h2 class="section">Mi día</h2><div class="rider-head"><div class="today"><div><b>' + (S.walletReady ? cents(saldoC()) : '…') + '</b><small>Saldo</small></div><div><b>' + doneToday.length + '</b><small>Viajes hoy</small></div><div><b>' + pesos(earned) + '</b><small>Ganado hoy</small></div></div></div>' +
       '<div class="subhead">Acumulado</div><div class="rider-head"><div class="today"><div><b>' + done.length + '</b><small>Viajes en total</small></div><div><b>' + pesos(tot) + '</b><small>Ganado en total</small></div><div><b>' + cents(com) + '</b><small>Comisiones pagadas</small></div></div></div>';
   }
+  { const pf = pfDiv(); pf.hidden = S.tab !== 'perfil'; $('#riderHead').hidden = S.tab === 'perfil'; if (!pf.hidden) renderPerfil(pf, done.length); }
   $('#riderWallet').hidden = S.tab !== 'saldo';
   if (S.tab === 'saldo') renderWallet();
   if (S.tab === 'disp') {
@@ -1209,7 +1229,7 @@ function renderRider() {
       '<article class="order">' + head(o) + '<div class="line"><span class="k">Entregó en</span><span class="v">' + esc(o.dest) + '</span></div><div class="money"><div class="cash">' + esc(o.shop) + '</div><div class="cash"><b>' + pesos(o.tarifa) + '</b></div></div></article>').join('');
     tr.innerHTML = h;
   }
-  return [{ id: 'disp', label: 'Pedidos', badge: open.length }, { id: 'viajes', label: 'Mis viajes', badge: active.length }, { id: 'resumen', label: 'Mi día' }, { id: 'saldo', label: 'Saldo' }];
+  return [{ id: 'disp', label: 'Pedidos', badge: open.length, icon: 'home' }, { id: 'resumen', label: 'Mi día', icon: 'notes' }, { id: 'saldo', label: 'Saldo', icon: 'bag' }, { id: 'viajes', label: 'Mis viajes', badge: active.length, icon: 'moto' }, { id: 'perfil', label: 'Perfil', icon: 'user' }];
 }
 
 function movRow(m) {
@@ -1446,13 +1466,31 @@ function renderAdmin() {
 }
 
 function whoSet(t) { const n = document.getElementById('whoName'); if (n && n.textContent !== t) n.textContent = t; }
+const TI = {
+  home: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3.2 2.4 11.6c-.5.4-.2 1.2.5 1.2H5V20a1 1 0 0 0 1 1h4v-5.5h4V21h4a1 1 0 0 0 1-1v-7.2h2.1c.7 0 1-.8.5-1.2z"/></svg>',
+  notes: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm2.2 4.2a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zm3.6.2a.9.9 0 0 0 0 1.8h5.4a.9.9 0 0 0 0-1.8zM7.2 10.9a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zm3.6.2a.9.9 0 0 0 0 1.8h5.4a.9.9 0 0 0 0-1.8zm-3.6 3.7a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zm3.6.2a.9.9 0 0 0 0 1.8h5.4a.9.9 0 0 0 0-1.8z"/></svg>',
+  bag: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 7V6a4 4 0 0 1 8 0v1h2.2a1 1 0 0 1 1 .9l1 12A1 1 0 0 1 19.2 21H4.8a1 1 0 0 1-1-1.1l1-12a1 1 0 0 1 1-.9zm2 0h4V6a2 2 0 0 0-4 0zm-.5 3.2a1 1 0 0 0 0 2 1 1 0 0 0 0-2zm5 0a1 1 0 0 0 0 2 1 1 0 0 0 0-2z"/></svg>',
+  moto: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 6.2c0-.6.4-1 1-1h3c.6 0 1 .4 1 1s-.4 1-1 1H4c-.6 0-1-.4-1-1zM6.4 9.2h3.7l1.9 4.6h2.2l-1.2-3.5c-.2-.7.3-1.3 1-1.3h1.1c.5 0 .9.3 1.1.7l2 4.8a3.4 3.4 0 1 1-1.9.8l-.3-.7h-2.4c-.5 0-.9-.3-1.1-.7L9.5 11H7.7c-1.6 0-2.9 1.2-3.1 2.8l-.2 1.7H6a3.5 3.5 0 1 1-3.5 4.1.7.7 0 0 1 0-.2V15c0-3.4 1.6-5.8 3.9-5.8zM5.2 20.4a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2zm13.5 0a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z"/></svg>',
+  user: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="7.8" r="4.3"/><path d="M3.6 20.2c0-4 3.8-6.3 8.4-6.3s8.4 2.3 8.4 6.3c0 .5-.4.8-.8.8H4.4c-.4 0-.8-.3-.8-.8z"/></svg>'
+};
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '.rider-bar #who{display:none!important}body.has-tabs main{padding-bottom:96px}' +
+    '.tabs-in.ico{gap:0}.tabs-in.ico .tab{position:relative;min-height:56px;padding:0;background:none!important;color:#a3a3a3;border-radius:14px}.tabs-in.ico .tab svg{width:30px;height:30px}.tabs-in.ico .tab[aria-selected="true"]{color:#f08c00}.tabs-in.ico .tab:active{background:rgba(0,0,0,.05)!important}' +
+    '.tabs-in.ico .badge{position:absolute;top:3px;left:calc(50% + 8px);min-width:19px;height:19px;font-size:11px;padding:0 5px;background:#e8452c!important;color:#fff!important}' +
+    '.pf-top{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0 4px}.pf-av{width:84px;height:84px;border-radius:50%;background:#f6b400;color:#16202a;display:grid;place-items:center}.pf-av svg{width:48px;height:48px}.pf-top b{font-size:24px;margin-top:6px}.pf-top small{font-size:15px;opacity:.7}';
+  document.head.appendChild(st);
+})();
 function renderTabs(tabs) {
   const nav = $('#tabs'); nav.hidden = !tabs;
-  if (!tabs) return;
+  if (!tabs) { document.body.classList.remove('has-tabs'); return; }
   $('#tabsIn').style.setProperty('--n', tabs.length);
   $('#tabsIn').setAttribute('data-n', tabs.length);
-  $('#tabsIn').innerHTML = tabs.map((t) =>
-    '<button type="button" role="tab" class="tab" data-act="tab" data-tab="' + t.id + '" aria-selected="' + (S.tab === t.id) + '">' + esc(t.label) +
+  const ico = !!tabs[0].icon;
+  $('#tabsIn').classList.toggle('ico', ico); document.body.classList.toggle('has-tabs', true);
+  $('#tabsIn').innerHTML = tabs.map((t) => ico
+    ? '<button type="button" role="tab" class="tab" data-act="tab" data-tab="' + t.id + '" aria-label="' + esc(t.label) + '" title="' + esc(t.label) + '" aria-selected="' + (S.tab === t.id) + '">' + (TI[t.icon] || '') + (t.badge ? '<span class="badge">' + t.badge + '</span>' : '') + '</button>'
+    : '<button type="button" role="tab" class="tab" data-act="tab" data-tab="' + t.id + '" aria-selected="' + (S.tab === t.id) + '">' + esc(t.label) +
     (t.badge ? '<span class="badge">' + t.badge + '</span>' : '') + '</button>').join('');
   try { const on = $('#tabsIn').querySelector('[aria-selected="true"]'); if (on && on.scrollIntoView) on.scrollIntoView({ inline: 'nearest', block: 'nearest' }); } catch (e) {}
 }
@@ -1482,7 +1520,8 @@ function render() {
   if (v === 'shop') tabs = renderShop();
   if (v === 'rider') tabs = renderRider();
   S.menuTabs = (v === 'shop' || v === 'rider') ? tabs : null;
-  if (S.menuTabs) tabs = null;
+  if (v === 'shop') tabs = null;
+  document.body.classList.toggle('rider-bar', v === 'rider');
   if (v === 'admin') { const list = renderAdmin(); S.adminMenu = list; adminHome(list); tabs = null; }
   renderTabs(tabs);
   $('#orderBtn').disabled = !canAct();
@@ -1575,6 +1614,7 @@ document.addEventListener('click', (e) => {
   else if (act === 'swr-close') { S.swr = false; render(); }
   else if (act === 'swr-pick') { S.swrRole = b.getAttribute('data-r'); render(); }
   else if (act === 'swr-go') switchRole();
+  else if (act === 'pf-switch') { if (window.__gmOpen) window.__gmOpen(); }
   else if (act === 'ag-add') agAdd('ag');
   else if (act === 'sc-add') agAdd('sc', 'socio');
   else if (act === 'ag-qr') { const e2 = b.getAttribute('data-e'); S.qrFor = S.qrFor === e2 ? '' : e2; render(); }
@@ -3093,7 +3133,7 @@ function tarFor(km) {
     const i = info();
     if (mode === 'menu' && i) {
       el.innerHTML = '<div class="gm"><h3>☰ Menú</h3><p>' + esc(S.name || '') + ' · modo ' + LBL[i.cur] + '</p>' +
-        (S.menuTabs ? '<div class="gl">Ir a</div>' + S.menuTabs.map((t) => '<button class="' + (S.tab === t.id ? 'cur' : 'tb') + '" data-gm="tab" data-t="' + esc(t.id) + '">' + esc(t.label) + (t.badge ? ' <span class="gbd">' + t.badge + '</span>' : '') + (S.tab === t.id ? ' ✓' : '') + '</button>').join('') : '') +
+        (S.menuTabs && view() === 'shop' ? '<div class="gl">Ir a</div>' + S.menuTabs.map((t) => '<button class="' + (S.tab === t.id ? 'cur' : 'tb') + '" data-gm="tab" data-t="' + esc(t.id) + '">' + esc(t.label) + (t.badge ? ' <span class="gbd">' + t.badge + '</span>' : '') + (S.tab === t.id ? ' ✓' : '') + '</button>').join('') : '') +
         '<div class="gl">Cambiar de perfil</div>' +
         i.opts.map((o, n) => '<button class="sw" data-gm="switch" data-k="' + n + '">🔁 Cambiar a ' + optTxt(o) + '</button>').join('') +
         '<button class="dk" data-gm="out">Cerrar sesión</button><button class="gh" data-gm="close">Cerrar menú</button></div>';
@@ -3147,6 +3187,7 @@ function tarFor(km) {
       S.pw = pass; S.pwFor = o.target; busy = false; close();
     } catch (e) { fail('No se pudo cambiar. Intenta de nuevo.'); }
   }
+  window.__gmOpen = () => { mode = 'menu'; err = ''; paint(); }; window.__gmInfo = info;
   function choose(o) { if (active()) { close(); toast('Tienes un pedido activo. Termínalo antes de cambiar de modo.'); return; } if (gpw()) { pick = o; mode = ''; go(gpw(), o); } else { pick = o; mode = 'pass'; err = ''; paint(); } }
   document.addEventListener('click', (e) => {
     const w = e.target.closest && e.target.closest('#who');
