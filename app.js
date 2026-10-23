@@ -151,6 +151,9 @@ function newCode() {
 }
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const saldoC = () => (S.wallet && Number(S.wallet.saldoC)) || 0;
+const MAX_ACT = 3; // máximo de pedidos que un repartidor lleva a la vez (asignados, recogidos o con oferta esperando)
+const slotsUsed = () => { try { const act = mine().filter((o) => o.estado === 'asignado' || o.estado === 'recogido').length; const pend = (S.ofertas || []).filter((x) => x.estado === 'pendiente' && String(x.id).endsWith('_' + S.uid) && byId(String(x.id).slice(0, -(S.uid.length + 1))) && byId(String(x.id).slice(0, -(S.uid.length + 1))).estado === 'abierto').length; return act + pend; } catch (e) { return 0; } };
+const riderFull = () => S.role === 'rider' && slotsUsed() >= MAX_ACT;
 const canTake = (o) => S.walletReady && !!S.wallet && saldoC() >= comC(o);
 
 /* ---------- verificación de documentos ---------- */
@@ -648,6 +651,7 @@ async function counter(id, m) {
   const o = byId(id);
   if (!canAct() || view() !== 'rider' || !o || o.estado !== 'abierto' || S.busy.has('of' + id)) return;
   if (!S.online) { toast('Conéctate para ofertar.'); return; }
+  if (riderFull()) { toast('Ya llevas ' + MAX_ACT + ' pedidos. Entrega alguno para tomar más.'); return; }
   if (saldoC() < m * COM_C) { toast('Tu saldo no alcanza para esa oferta. Recarga.'); S.tab = 'saldo'; render(); return; }
   S.busy.add('of' + id); render();
   try {
@@ -704,7 +708,7 @@ function onOpenOrders(snap) {
   if (S.online && fresh.length) {
     fresh.sort((a, b) => b.creadoEn - a.creadoEn);
     let pushed = 0;
-    fresh.forEach((o) => { if (!S.ignored.has(o.id) && inMyZone(o) && S.queue.indexOf(o.id) < 0) { S.queue.unshift(o.id); pushed++; } });
+    fresh.forEach((o) => { if (!riderFull() && !S.ignored.has(o.id) && inMyZone(o) && S.queue.indexOf(o.id) < 0) { S.queue.unshift(o.id); pushed++; } });
     if (pushed) { beep(); buzz(); }
   }
   syncSheet(); render();
@@ -889,6 +893,7 @@ function UI_goMap(id) { try { const u = window.__gmap; if (u) { u.fitKey = ''; }
 async function accept(id) {
   if (!canAct() || S.busy.has(id) || view() !== 'rider') return;
   if (!S.online) { toast('Conéctate para aceptar pedidos.'); return; }
+  if (riderFull()) { toast('Ya llevas ' + MAX_ACT + ' pedidos. Entrega alguno para tomar más.'); return; }
   const raw = S.openOrders.find((x) => x.id === id);
   if (raw && !liveR(raw)) { toast('Ese pedido ya venció.'); return; }
   const oo = byId(id);
@@ -1203,6 +1208,7 @@ function copyCode(c) {
 const OFFER_MS = 40000;
 function syncSheet() {
   if (!S.online || view() !== 'rider') { S.sheetId = null; S.gone = {}; S.seen = new Set(); renderSheet(); return; }
+  if (riderFull()) { S.queue = []; S.sheetId = null; renderSheet(); return; }
   S.gone = S.gone || {}; S.seen = S.seen || new Set();
   const now = Date.now(), keep = [];
   S.queue.forEach((id) => {
@@ -1545,7 +1551,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 27';
+const APP_V = '23-oct-2026 · 28';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -1645,7 +1651,7 @@ function renderRider() {
     const far = S.online ? S.openOrders.filter(liveR).filter((x) => !inMyZone(x)) : [];
     const lowS = S.online && S.walletReady && S.openOrders.filter(liveR).some((x) => !canTake(x));
     const hint = (lowS ? '<p class="warn">Tu saldo no alcanza para algunos pedidos. Recarga en la motito.</p>' : '') + (far.length ? '<p class="warn">Hay ' + far.length + (far.length === 1 ? ' pedido abierto' : ' pedidos abiertos') + ' que no te quedan cerca (a más de ' + (S.radioKm || 3) + ' km) o aún no se ubica su dirección.</p>' : '');
-    av.innerHTML = !S.openReady ? '' : hint + (open.length ? '<div class="subhead">Pedidos disponibles (' + open.length + ')</div>' + open.map(availCard).join('') : '');
+    av.innerHTML = !S.openReady ? '' : riderFull() ? '<p class="warn">Ya llevas ' + MAX_ACT + ' pedidos. Entrega alguno para ver pedidos nuevos.</p>' : hint + (open.length ? '<div class="subhead">Pedidos disponibles (' + open.length + ')</div>' + open.map(availCard).join('') : '');
   }
   try { renderSheet(); } catch (e) {}
   try { window.__mapSync && window.__mapSync({ offer: S.sheetId ? byId(S.sheetId) : null, active, act0: active.length ? active[active.length - 1] : null, done, doneToday }); } catch (e) { console.warn('mapa', e); }
