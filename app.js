@@ -574,7 +574,7 @@ function restoreDraft(o) {
   }
   S.minOffer = Number(o.tarifa) || 0;
   $('#o-tarifa').value = S.minOffer;
-  S.tab = 'nuevo'; cliSum(); beep([440, 330]);
+  S.tab = 'nuevo'; S.newOk = true; cliSum(); beep([440, 330]);
   toast('Nadie tomó tu oferta de ' + pesos(S.minOffer) + '. Súbela o déjala igual y vuelve a pedir.');
   render();
 }
@@ -1425,13 +1425,16 @@ function histHtml(list) {
 function renderShop() {
   const list = S.orders;
   const active = list.filter((o) => o.estado === 'abierto' || o.estado === 'asignado' || o.estado === 'recogido');
+  // Cliente de envíos personales: con un pedido sin terminar, "Mis pedidos" es la pantalla principal
+  if (S.tab !== 'nuevo') S.newOk = false;
+  if (isCli(S.profile) && S.openReady && active.length && S.tab === 'nuevo' && !S.newOk) S.tab = 'pedidos';
   $('#shopNew').hidden = S.tab !== 'nuevo';
   const el = $('#shopList'); el.hidden = S.tab !== 'pedidos';
   if (S.tab === 'pedidos') {
     if (!S.openReady) el.innerHTML = emptyBox('Cargando pedidos', 'Un momento.');
     else {
       const cur = list.filter((o) => o.estado !== 'entregado' && o.estado !== 'cancelado');
-      el.innerHTML = cur.length ? '<h2 class="section">Mis pedidos</h2><div class="list">' + cur.map(shopCard).join('') + '</div>'
+      el.innerHTML = cur.length ? (isCli(S.profile) ? '<div class="pend-box"><b>⏳ Tienes un pedido pendiente de finalizar</b><span>Aquí ves en qué va. Cuando se entregue, podrás hacer otro pedido.</span><button type="button" class="btn ghost" data-act="tab" data-tab="nuevo">➕ Generar nueva orden</button></div>' : '') + '<h2 class="section">Mis pedidos</h2><div class="list">' + cur.map(shopCard).join('') + '</div>'
         : emptyBox(list.length ? 'No tienes pedidos en curso' : 'Aún no hay pedidos', list.length ? 'Tus pedidos terminados están en Historial.' : 'Cuando generes un pedido, aquí ves quién lo tomó y en qué va.');
     }
   }
@@ -1542,7 +1545,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 25';
+const APP_V = '23-oct-2026 · 26';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -2113,7 +2116,7 @@ document.addEventListener('click', (e) => {
   else if (act === 'ag-work') { S.incAg = b.getAttribute('data-e'); S.tab = 'incidencias'; render(); }
   else if (act === 'inc-ag') { S.incAg = b.getAttribute('data-e'); render(); }
   else if (act === 'ped-f') { S.pedF = b.getAttribute('data-f'); render(); }
-  else if (act === 'tab') { S.tab = b.getAttribute('data-tab'); S.cancelId = null; render(); }
+  else if (act === 'tab') { S.tab = b.getAttribute('data-tab'); S.newOk = S.tab === 'nuevo'; S.cancelId = null; render(); }
   else if (act === 'cancel') { S.cancelId = id; render(); }
   else if (act === 'cancel-no') { S.cancelId = null; render(); }
   else if (act === 'cancel-yes') cancelOrder(id);
@@ -4091,7 +4094,7 @@ function recHtml(done) {
     else if (a === 'out') { close(); doSignOut(); }
     else if (a === 'rec') { close(); openRecovery(); }
     else if (a === 'edit') { close(); openEditPerfil(); }
-    else if (a === 'tab') { S.tab = b.getAttribute('data-t'); S.cancelId = null; close(); render(); try { window.scrollTo(0, 0); } catch (er) {} }
+    else if (a === 'tab') { S.tab = b.getAttribute('data-t'); S.newOk = S.tab === 'nuevo'; S.cancelId = null; close(); render(); try { window.scrollTo(0, 0); } catch (er) {} }
     else if (a === 'switch' && i && i.opts[k]) choose(i.opts[k]);
     else if (a === 'goto' && chooseOpts[k]) choose(chooseOpts[k]);
     else if (a === 'go') { const v = (el.querySelector('#gm-pass') || {}).value || ''; if (v.length < 6) { err = 'Escribe tu contraseña.'; paint(); return; } go(v, pick); }
@@ -4162,3 +4165,5 @@ function recHtml(done) {
     if (document.body) setTimeout(show, 800); else addEventListener('DOMContentLoaded', () => setTimeout(show, 800));
   } catch (e) {}
 })();
+
+(() => { const st = document.createElement('style'); st.textContent = '.pend-box{display:flex;flex-direction:column;gap:8px;background:#fff3cd;color:#3a2f00;border:2px solid #f6b500;border-radius:16px;padding:14px;margin:0 0 12px;font-size:15px}.pend-box b{font-size:17px}:root[data-theme=dark] .pend-box{background:#3a2f00;color:#ffe9a6}'; document.head.appendChild(st); })();
