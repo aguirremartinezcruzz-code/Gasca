@@ -804,7 +804,7 @@ function ocHtml(o, ro) {
       : (rel ? '<div class="oc-ok">✅ Pedido liberado.</div>' : '<div class="oc-ok wait">⏳ Preparando tu código…</div>');
   } else if (live && reco) h += '<div class="oc-ok">✅ Pedido liberado y recogido.</div>';
   h += '<div class="oc-sec"><div class="oc-k">Entregar a</div><div class="oc-n">' + esc(o.cliente || 'Cliente') + '</div>' + (o.tel ? '<div class="oc-a">' + esc(o.tel) + '</div>' : '') +
-    '<div class="oc-a">' + esc(dp.dir) + '</div>' + (dp.ref ? '<div class="oc-ref">Referencia: ' + esc(dp.ref) + '</div>' : '') + (pdesc(o).t ? '<div class="oc-ref">Lleva: ' + esc(pdesc(o).t) + '</div>' : '') + '</div>';
+    '<div class="oc-a">' + esc(dp.dir) + '</div>' + (dp.ref ? '<div class="oc-ref">Referencia: ' + esc(dp.ref) + '</div>' : '') + (pdesc(o).t ? '<div class="oc-ref">Lleva: ' + esc(pdesc(o).t) + '</div>' : '') + (EQL[pdesc(o).eq] ? '<div class="oc-ref"><b>Equipo: ' + EQL[pdesc(o).eq] + '</b></div>' : '') + '</div>';
   h += ocMoney(o);
   if (ro && (o.estado === 'cancelado' || o.liberado)) h += '<div class="oc-box"><div class="oc-h">Por qué no se entregó</div><div class="oc-a">' + esc(noReason(o) || 'Sin detalle.') + '</div></div>';
   if (live) {
@@ -1247,9 +1247,10 @@ function pdesc(o) {
   if (!/^[evp]$/.test(m[0] || '') || !/^[re]$/.test(m[2] || '')) return { t: d };
   return { t: d.slice(0, i), tipo: m[0], prod: Number(m[1]) || 0, quien: m[2], eq: /^[mca]$/.test(m[3] || '') ? m[3] : '' };
 }
+const EQL = { m: '🎒 Mochila', c: '📦 Caja plástica' };
 function eqNote(o) {
-  const q = pdesc(o).eq; if (!q) return '';
-  const t = q === 'm' ? '🎒 <b>Necesita mochila.</b> Va en mochila.' : q === 'c' ? '📦 <b>Necesita caja.</b> No cabe en mochila: si tu moto no tiene caja, mejor no lo aceptes.' : '🎒📦 <b>Mochila o caja, como tengas.</b> A quien envía no le importa.';
+  const q = pdesc(o).eq; if (q !== 'm' && q !== 'c') return '';
+  const t = q === 'm' ? '🎒 <b>Necesita mochila.</b> Son cosas ligeras.' : '📦 <b>Necesita caja plástica.</b> Son cosas pesadas o que no van en mochila. Si tu moto no tiene caja plástica, mejor no lo aceptes.';
   return '<p class="paynote">' + t + '</p>';
 }
 function payNote(o) {
@@ -1487,7 +1488,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '22-oct-2026 · 12';
+const APP_V = '22-oct-2026 · 13';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -2907,7 +2908,7 @@ function cliSum() {
   const card = (n, v, t, sm, chk) => '<label class="role"><input type="radio" name="' + n + '" value="' + v + '"' + (chk ? ' checked' : '') + '><span class="card-r"><b>' + t + '</b><small>' + sm + '</small></span></label>';
   pair.insertAdjacentHTML('beforebegin',
     '<div id="cliEq" hidden><div class="field sec-h"><label>¿En qué lo llevamos?</label></div><div class="roles" style="grid-template-columns:1fr">' +
-    card('ceq', 'm', '🎒 Mochila', 'Comida, ropa, paquetes chicos.') + card('ceq', 'c', '📦 Caja', 'Cosas grandes o que no caben en mochila: herramientas, una sierra, una bolsa de clavos.') + card('ceq', 'a', '🤷 No importa', 'Mochila o caja, el que tenga el repartidor.', true) + '</div></div>' +
+    card('ceq', 'm', '🎒 Mochila', 'Para cosas ligeras: platos de comida, ropa, paquetes chicos.') + card('ceq', 'c', '📦 Caja plástica', 'Una caja de plástico para cosas pesadas o que no van en mochila: herramientas, una sierra, carne, una bolsa de clavos. No es caja de cartón ni de madera.') + card('ceq', 'a', '🤷 Cualquiera de las dos', 'Da igual si es mochila o caja plástica.', true) + '</div></div>' +
     '<div id="cliPay" hidden><div class="field sec-h"><label>¿Hay una venta de por medio?</label></div><div class="roles" style="grid-template-columns:1fr">' +
     card('ctipo', 'e', 'No, solo es un envío', 'Por ejemplo, un martillo prestado.', true) +
     card('ctipo', 'v', 'Sí, me pagan al recoger', 'El repartidor te paga el producto al recoger y lo cobra a quien recibe.') +
@@ -3039,7 +3040,7 @@ function wzBuild() {
   const pay = [pair, $('#minNote')];
   WZ.steps = cli ? [
     { t: '📦 ¿Qué vas a enviar?', h: 'Por ejemplo: un martillo, zapatos escolares, un paquete.', e: [wzF('o-desc'), $('#wzLast')] },
-    { t: '🛵 ¿En qué lo llevamos?', h: 'Elige si necesita mochila o caja. Así el repartidor sabe si puede ir.', e: [$('#cliEq')] },
+    { t: '🛵 ¿En qué lo llevamos?', h: 'Elige mochila (cosas ligeras) o caja plástica (cosas pesadas). Así el repartidor sabe si puede ir.', e: [$('#cliEq')] },
     { t: '🛍️ ¿Hay una venta de por medio?', h: 'Elige una opción. Si el repartidor tiene que pagar o cobrar un producto, aquí lo indicas.', e: [$('#cliPay'), $('#fProd')], chk: 'v' },
     { t: '💵 ¿Quién paga el mandadito?', h: 'Y cuánto ofreces. Los repartidores pueden aceptar tu oferta o proponerte otra.', e: [$('#cliQuien')].concat(pay), chk: 'o' },
     { t: '📍 ¿Dónde lo recogemos?', h: 'La dirección de donde el repartidor va a recoger.', e: [$('#pickFields')] },
@@ -3060,7 +3061,7 @@ function wzBuild() {
 function wzSumHtml() {
   const cli = isCli(S.profile), row = (k, v, n) => '<div class="line"><span class="k">' + k + '</span><span class="v">' + esc(v) + ' <a href="#" data-wzgo="' + n + '">Cambiar</a></span></div>';
   const n = (i) => i; let h = '<div class="sumbox wzsum"><b>Tu pedido</b>';
-  if (cli) h += row('Lleva', val('o-desc'), 0) + row('Va en', ({ m: '🎒 Mochila', c: '📦 Caja', a: '🤷 No importa' })[(document.querySelector('input[name=ceq]:checked') || {}).value || 'a'], 1) + row('Recoger en', buildPick(), 4) + row('Entregar a', val('o-cliente') + ' · ' + val('o-tel') + ' · ' + buildDest(), 5);
+  if (cli) h += row('Lleva', val('o-desc'), 0) + row('Va en', ({ m: '🎒 Mochila', c: '📦 Caja plástica', a: '🤷 Cualquiera de las dos' })[(document.querySelector('input[name=ceq]:checked') || {}).value || 'a'], 1) + row('Recoger en', buildPick(), 4) + row('Entregar a', val('o-cliente') + ' · ' + val('o-tel') + ' · ' + buildDest(), 5);
   else h += row('Lleva', val('o-desc'), 0) + row('Entregar a', val('o-cliente') + ' · ' + val('o-tel') + ' · ' + buildDest(), 1) +
     row('Cobrar al cliente', Number($('#o-cobro').value) > 0 ? pesos(Number($('#o-cobro').value)) : 'Ya pagó', 3) + row('Pago al repartidor', pesos(Number($('#o-tarifa').value) || 0), 3);
   return h + '</div>';
