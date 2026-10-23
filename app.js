@@ -1488,7 +1488,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '22-oct-2026 · 13';
+const APP_V = '22-oct-2026 · 14';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -2110,7 +2110,7 @@ document.addEventListener('click', (e) => {
 
 /* ---------- mapa de inicio (casita): mapa propio con OpenStreetMap, sin librerías de pago ---------- */
 (function () {
-  const TS = 256, TILE = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', TEPIC = [21.5042, -104.8946];
+  const TS = 256, TILE = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', TILE_D = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png', TILE_L = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png', TEPIC = [21.5042, -104.8946];
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const proj = (lat, lon, z) => { const s = TS * Math.pow(2, z), sl = Math.sin(clamp(lat, -85, 85) * Math.PI / 180); return [(lon + 180) / 360 * s, (0.5 - Math.log((1 + sl) / (1 - sl)) / (4 * Math.PI)) * s]; };
   const unproj = (x, y, z) => { const s = TS * Math.pow(2, z), n = Math.PI - 2 * Math.PI * y / s; return [180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))), x / s * 360 - 180]; };
@@ -2151,9 +2151,9 @@ document.addEventListener('click', (e) => {
       const x0 = Math.floor((c[0] - W / 2) / ts), x1 = Math.floor((c[0] + W / 2) / ts), y0 = Math.floor((c[1] - H / 2) / ts), y1 = Math.floor((c[1] + H / 2) / ts), need = new Set();
       for (let tx = x0; tx <= x1; tx++) for (let ty = y0; ty <= y1; ty++) {
         if (ty < 0 || ty >= n) continue;
-        const key = zi + '/' + tx + '/' + ty; need.add(key);
+        const dk = isDarkNow(), key = (dk ? 'd' : 'l') + zi + '/' + tx + '/' + ty; need.add(key);
         let im = this.tiles.get(key);
-        if (!im) { im = new Image(); im.className = 'gm-t'; im.alt = ''; im.draggable = false; im.onerror = () => { im.style.visibility = 'hidden'; }; im.src = TILE.replace('{z}', zi).replace('{x}', ((tx % n) + n) % n).replace('{y}', ty); this.tl.appendChild(im); this.tiles.set(key, im); }
+        if (!im) { im = new Image(); im.className = 'gm-t'; im.alt = ''; im.draggable = false; const xx = ((tx % n) + n) % n, fill = (u) => u.replace('{s}', 'abcd'[(xx + ty) % 4]).replace('{z}', zi).replace('{x}', xx).replace('{y}', ty); im.onerror = () => { if (!im.__fb) { im.__fb = 1; im.style.filter = dk ? 'invert(1) hue-rotate(188deg) brightness(.85) contrast(.95) saturate(.5)' : 'none'; im.src = fill(TILE); } else im.style.visibility = 'hidden'; }; im.src = fill(dk ? TILE_D : TILE_L); this.tl.appendChild(im); this.tiles.set(key, im); }
         im.style.transform = 'translate(' + (tx * ts - c[0] + W / 2) + 'px,' + (ty * ts - c[1] + H / 2) + 'px)'; im.style.width = im.style.height = (ts + 0.6) + 'px';
       }
       for (const [k, im] of this.tiles) if (!need.has(k)) { im.remove(); this.tiles.delete(k); }
@@ -2195,7 +2195,7 @@ document.addEventListener('click', (e) => {
       '<div class="gm-chip" id="gmChip" hidden></div>' +
       '<button type="button" class="gm-pw" id="onlineSw" data-act="online" role="switch" aria-checked="false">' + IC.pw + '<b id="gmPwT"></b></button>' +
       '<div class="gm-stats"><span class="gm-ic">' + IC.coin + '</span><b id="gmHoy"></b></div>' +
-      '<a class="gm-attr" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a></div>';
+      '<a class="gm-attr" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap · © CARTO</a></div>';
     ref.parentNode.insertBefore(w, ref); UI.wrap = w;
     UI.map = new GMap(w.querySelector('.gm-canvas'));
     UI.map.userMoved = () => { UI.follow = false; };
@@ -2275,7 +2275,7 @@ document.addEventListener('click', (e) => {
   window.addEventListener('resize', () => { try { if (UI.wrap && !UI.wrap.hidden) sizeIt(); } catch (e) {} });
   const st = document.createElement('style');
   st.textContent = '#riderMap{position:relative;margin:4px -13px 8px;border-radius:16px;overflow:hidden;background:#0a3047;box-shadow:0 2px 10px rgba(0,0,0,.25);isolation:isolate}#riderMap[hidden]{display:none}' +
-    '.gm-canvas{position:absolute;inset:0;touch-action:none;overflow:hidden;cursor:grab;background:#0a3047}.gm-tiles,.gm-mk{position:absolute;inset:0}.gm-t{position:absolute;left:0;top:0;max-width:none;user-select:none;-webkit-user-drag:none;filter:invert(1) hue-rotate(188deg) brightness(.85) contrast(.95) saturate(.5);will-change:transform}' +
+    '.gm-canvas{position:absolute;inset:0;touch-action:none;overflow:hidden;cursor:grab;background:#0a3047}.gm-tiles,.gm-mk{position:absolute;inset:0}.gm-t{position:absolute;left:0;top:0;max-width:none;user-select:none;-webkit-user-drag:none;will-change:transform}' +
     '.gm-tint{position:absolute;inset:0;background:#0d5a80;mix-blend-mode:screen;opacity:.5;pointer-events:none}.gm-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}.gm-rc{fill:none;stroke:#0b1620;stroke-width:11;stroke-linecap:round;stroke-linejoin:round;opacity:.75}.gm-rl{fill:none;stroke:#f6a000;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}' +
     '.gm-m{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}.gm-me i{position:absolute;left:-11px;top:-11px;width:22px;height:22px;border-radius:50%;background:#2f7df6;border:3.5px solid #fff;box-shadow:0 0 0 8px rgba(47,125,246,.28),0 2px 6px rgba(0,0,0,.5)}' +
     '.gm-pin{position:absolute;left:-19px;top:-46px;width:38px;height:38px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:grid;place-items:center;border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.5)}.gm-pin.pick{background:#f08c00}.gm-pin.pick svg{transform:rotate(45deg)}.gm-pin.dest{background:#e53935}.gm-pin.dest i{width:12px;height:12px;border-radius:50%;background:#fff;display:block}' +
