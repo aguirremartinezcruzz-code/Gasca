@@ -129,7 +129,7 @@ function ago(t) {
 }
 const isToday = (t) => new Date(t).toDateString() === new Date().toDateString();
 const mine = () => S.orders.filter((o) => o.driverId === S.uid);
-const mapsUrl = (a) => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(String(a || '').split(' — ')[0]);
+const mapsUrl = (a) => 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + encodeURIComponent(String(a || '').split(' — ')[0]);
 function waUrl(tel) {
   let d = String(tel || '').replace(/\D/g, ''); if (!d) return '';
   if (d.length === 10) d = '52' + d;
@@ -796,7 +796,7 @@ function ocMoney(o) {
 function ocHtml(o, ro) {
   const st = ordStatus(o), asig = o.estado === 'asignado', reco = o.estado === 'recogido', live = !ro && (asig || reco);
   const dp = destParts(o.dest), wa = waUrl(o.tel), rel = isReleased(o), code = S.retiros && S.retiros[o.id];
-  const nav = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(String(asig ? o.pickup : o.dest).split(' — ')[0]);
+  const nav = mapsUrl(asig ? o.pickup : o.dest);
   let h = '<div class="oc-in"><div class="oc-bar"><button type="button" class="oc-back" data-act="oc-close">' + (live ? OCI.map + ' Ver mapa' : '← Volver') + '</button><b>Orden de compra</b><span class="oc-fol">' + folio(o.id) + '</span></div><div class="oc-body">';
   h += '<div class="oc-st"><span class="chip ' + esc(st.cls) + '">' + esc(st.t.split(' · ')[0]) + '</span></div>';
   h += '<div class="oc-sec"><div class="oc-k">Recoger en</div><div class="oc-n">' + esc(o.shop || 'Restaurante') + '</div><div class="oc-a">' + esc(o.pickup || '') + '</div></div>';
@@ -1254,7 +1254,7 @@ function renderSheet(force) {
 }
 (function () {
   const st = document.createElement('style');
-  st.textContent = '.sv-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:6px;color:var(--ink)}.sv-row>span{min-width:0;overflow-wrap:anywhere;font-weight:700}.sv-row b{white-space:nowrap;font-size:18px}.sv-row b.neg{color:#c0392b}.sv-row .btn{margin-left:6px}#prBox select{width:100%;min-height:48px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:0 10px;font-size:16px}#prBox{margin-top:14px}' + '#sheet.sheet{bottom:calc(80px + env(safe-area-inset-bottom,0px))!important;padding-inline:12px!important;z-index:21!important}.sc-wrap{pointer-events:auto;max-width:520px;margin-inline:auto;display:flex;flex-direction:column;gap:8px;max-height:min(58vh,470px);overflow:auto;padding:2px}' +
+  st.textContent = '#riderMap .gm-chip{flex-direction:column;align-items:stretch;gap:8px}#riderMap .gm-chip span{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}#riderMap .gm-chip a{text-align:center;padding:10px 14px;font-size:15.5px}#riderMap .gm-attr{font-size:11px;color:#fff}' + '.sv-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:6px;color:var(--ink)}.sv-row>span{min-width:0;overflow-wrap:anywhere;font-weight:700}.sv-row b{white-space:nowrap;font-size:18px}.sv-row b.neg{color:#c0392b}.sv-row .btn{margin-left:6px}#prBox select{width:100%;min-height:48px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:0 10px;font-size:16px}#prBox{margin-top:14px}' + '#sheet.sheet{bottom:calc(80px + env(safe-area-inset-bottom,0px))!important;padding-inline:12px!important;z-index:21!important}.sc-wrap{pointer-events:auto;max-width:520px;margin-inline:auto;display:flex;flex-direction:column;gap:8px;max-height:min(58vh,470px);overflow:auto;padding:2px}' +
     '.sc{background:var(--surface);color:var(--ink);border:2px solid var(--accent);border-radius:16px;padding:10px 12px 12px;display:flex;flex-direction:column;gap:7px;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:rise .22s ease-out both}' +
     '.sc.gone{text-align:center;font-weight:700;padding:14px;border-color:var(--line)}' +
     '.sc-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:19px;line-height:1.15}.sc-h b{overflow-wrap:anywhere}.sc-h span{font-size:13px;font-weight:800;color:var(--muted);white-space:nowrap}' +
@@ -1542,7 +1542,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 22';
+const APP_V = '23-oct-2026 · 23';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -2261,7 +2261,7 @@ document.addEventListener('click', (e) => {
       '<div class="gm-chip" id="gmChip" hidden></div>' +
       '<button type="button" class="gm-pw" id="onlineSw" data-act="online" role="switch" aria-checked="false">' + IC.pw + '<b id="gmPwT"></b></button>' +
       '<div class="gm-stats"><span class="gm-ic">' + IC.coin + '</span><b id="gmHoy"></b></div>' +
-      '<a class="gm-attr" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a></div>';
+      '<a class="gm-attr" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">Mapa de apoyo · © OpenStreetMap</a></div>';
     ref.parentNode.insertBefore(w, ref); UI.wrap = w;
     UI.map = new GMap(w.querySelector('.gm-canvas'));
     UI.map.userMoved = () => { UI.follow = false; };
@@ -2338,8 +2338,8 @@ document.addEventListener('click', (e) => {
     const r = UI.route, lbl = o.estado === 'asignado' ? 'Recoger: ' + (o.shop || 'restaurante') : 'Entregar: ' + (destParts(o.dest).dir || '').slice(0, 40);
     const pend = o.estado !== 'asignado' && !ds && geoCached(o.dest) === undefined, miss = o.estado !== 'asignado' && !ds && !pend, apx = !miss && ds && geoApprox(o.estado === 'asignado' ? o.pickup : o.dest);
     const dtxt = r && r.m ? ' · ' + (r.m < 1000 ? Math.round(r.m / 10) * 10 + ' m' : (r.m / 1000).toFixed(1) + ' km') + ' · ' + Math.max(1, Math.round(r.s / 60)) + ' min' : '';
-    const extra = pend ? ' · ubicando…' : miss ? ' · no la ubico en el mapa, usa Navegar' : dtxt + (apx ? ' · aprox.' : '');
-    const nav = target && !apx ? 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + llTxt(target) : mapsUrl(o.estado === 'asignado' ? o.pickup : o.dest);
+    const extra = pend ? ' · ubicando…' : miss ? ' · no la ubico en el mapa, usa Google Maps' : dtxt + (apx ? ' · aprox.' : '');
+    const nav = mapsUrl(o.estado === 'asignado' ? o.pickup : o.dest); // Google encuentra la dirección escrita mejor que el mapa de apoyo
     const html = '<span>' + esc(lbl + extra) + '</span><a href="' + esc(nav) + '" target="_blank" rel="noopener">Navegar</a>';
     if (UI.chip !== html) { UI.chip = html; chip.innerHTML = html; chip.hidden = false; }
   }
