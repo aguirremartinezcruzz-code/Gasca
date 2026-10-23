@@ -1551,7 +1551,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 28';
+const APP_V = '23-oct-2026 · 29';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -3279,18 +3279,52 @@ setInterval(wzSync, 400);
 
 /* Respaldo: si la conexión en vivo se duerme (pantalla apagada, otra app), el solicitante revisa sus pedidos cada 12 s y al volver a la app. */
 (function () {
-  let busy = false;
+  let busy = false, busyAt = 0;
+  const fv = (v) => {
+    if (!v) return null;
+    if ('stringValue' in v) return v.stringValue;
+    if ('integerValue' in v) return Number(v.integerValue);
+    if ('doubleValue' in v) return Number(v.doubleValue);
+    if ('booleanValue' in v) return v.booleanValue;
+    if ('timestampValue' in v) return Date.parse(v.timestampValue);
+    if ('mapValue' in v) { const o = {}; const f = (v.mapValue && v.mapValue.fields) || {}; Object.keys(f).forEach((k) => { o[k] = fv(f[k]); }); return o; }
+    if ('arrayValue' in v) return ((v.arrayValue && v.arrayValue.values) || []).map(fv);
+    return null;
+  };
+  const tmo = (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms));
+  // Pregunta directo a Firestore por internet (sin depender de la conexión en vivo, que a veces se duerme).
+  async function viaRest() {
+    const u = auth.currentUser; if (!u) throw new Error('nouser');
+    const tok = await Promise.race([u.getIdToken(), tmo(6000)]);
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 8000);
+    try {
+      const r = await fetch('https://firestore.googleapis.com/v1/projects/' + FIREBASE_CONFIG.projectId + '/databases/(default)/documents:runQuery', {
+        method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+        body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'orders' }], where: { fieldFilter: { field: { fieldPath: 'shopId' }, op: 'EQUAL', value: { stringValue: S.uid } } } } })
+      });
+      if (!r.ok) throw new Error('http ' + r.status);
+      const arr = await r.json();
+      return { docs: arr.filter((x) => x.document).map((x) => { const f = x.document.fields || {}, o = {}; Object.keys(f).forEach((k) => { o[k] = fv(f[k]); }); return { data: () => o }; }) };
+    } finally { clearTimeout(t); }
+  }
   async function poll() {
+    if (busy && Date.now() - busyAt > 20000) busy = false; // por si una consulta se quedó colgada
     if (busy || S.role !== 'shop' || !S.roleOn || view() !== 'shop' || document.hidden) return;
     if (!S.myOrders.some((o) => o.estado === 'abierto' || o.estado === 'asignado' || o.estado === 'recogido')) return;
-    busy = true;
-    try { const snap = await getDocs(query(collection(db, 'orders'), where('shopId', '==', S.uid))); if (view() === 'shop') onShopOrders(snap); } catch (e) {}
+    busy = true; busyAt = Date.now();
+    try {
+      let snap = null;
+      try { snap = await viaRest(); } catch (e) { snap = await Promise.race([getDocs(query(collection(db, 'orders'), where('shopId', '==', S.uid))), tmo(10000)]); }
+      if (snap && view() === 'shop') onShopOrders(snap);
+    } catch (e) {}
     busy = false;
   }
-  setInterval(poll, 12000);
+  setInterval(poll, 6000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(poll, 400); });
   window.addEventListener('online', () => setTimeout(poll, 400));
+  window.addEventListener('focus', () => setTimeout(poll, 400));
 })();
+
 
 /* ---------- aviso animado: "tu pedido fue entregado" ---------- */
 const DELIV_SVG = '<svg viewBox="0 0 120 70" width="96" height="56" aria-hidden="true"><g class="dv-lines" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".35"><path d="M2 28h14"/><path d="M6 38h12"/><path d="M0 48h10"/></g><g class="dv-bike">' +
