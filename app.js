@@ -129,7 +129,13 @@ function ago(t) {
 }
 const isToday = (t) => new Date(t).toDateString() === new Date().toDateString();
 const mine = () => S.orders.filter((o) => o.driverId === S.uid);
-const mapsUrl = (a) => 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + encodeURIComponent(String(a || '').split(' — ')[0]);
+// Dirección limpia para buscadores: sin "Col.", "Fraccionamiento", "Int." ni la referencia; con estado al final.
+const cleanAddr = (a, withState) => {
+  const t = String(a || '').split(' — ')[0].replace(/\bInt\.?\s*\S+/ig, '').replace(/\bCol\.?\s+/ig, '').replace(/\bFracc(?:ionamiento)?\.?\s+/ig, '').replace(/\s+/g, ' ').replace(/\s*,\s*(,\s*)*/g, ', ').replace(/^,\s*|,\s*$/g, '').trim();
+  if (!withState || /nayarit|jalisco/i.test(t)) return t;
+  return t + (/vallarta/i.test(t) && !/banderas/i.test(t) ? ', Jalisco, México' : ', Nayarit, México');
+};
+const mapsUrl = (a) => 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + encodeURIComponent(cleanAddr(a, true));
 function waUrl(tel) {
   let d = String(tel || '').replace(/\D/g, ''); if (!d) return '';
   if (d.length === 10) d = '52' + d;
@@ -1551,7 +1557,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 29';
+const APP_V = '23-oct-2026 · 30';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -3740,10 +3746,10 @@ async function switchRole() {
 
 /* ---------- distancia aproximada del pedido (OpenStreetMap) ---------- */
 const GEO = { cache: null, q: [], busy: false, last: 0, pend: new Set(), fail: new Set(), pp: new Set() };
-function geoLoad() { if (!GEO.cache) { try { GEO.cache = JSON.parse(lsGet('gasca_geo') || '{}') || {}; } catch (e) { GEO.cache = {}; } } return GEO.cache; }
+function geoLoad() { if (!GEO.cache) { try { GEO.cache = JSON.parse(lsGet('gasca_geo') || '{}') || {}; } catch (e) { GEO.cache = {}; } if (lsGet('gasca_geo_v') !== '2') { Object.keys(GEO.cache).forEach((k) => { if (!GEO.cache[k]) delete GEO.cache[k]; }); lsSet('gasca_geo_v', '2'); } } return GEO.cache; }
 function geoSave() { try { const k = Object.keys(GEO.cache); if (k.length > 300) k.slice(0, 100).forEach((x) => delete GEO.cache[x]); lsSet('gasca_geo', JSON.stringify(GEO.cache)); } catch (e) {} }
 function geoQueries(txt) {
-  const t = String(txt || '').replace(/\s*[—-]\s*Ref:.*$/i, '').replace(/\bInt\.?\s*\S+/ig, '').replace(/\bCol\.?\s+/ig, '').replace(/\s+/g, ' ').trim();
+  const t = cleanAddr(String(txt || '').replace(/\s*[—-]\s*Ref:.*$/i, ''), false);
   const parts = t.split(',').map((x) => x.trim()).filter(Boolean), tail = /nayarit/i.test(t) ? '' : ', Nayarit, México';
   const base = [parts.join(', ') + tail, parts.map((p) => p.replace(/\b\d+\w*\b/g, '').trim()).filter(Boolean).join(', ') + tail].filter((x, i, a) => x.length > 8 && a.indexOf(x) === i);
   const loose = [];
