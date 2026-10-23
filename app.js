@@ -1254,7 +1254,7 @@ function renderSheet(force) {
 }
 (function () {
   const st = document.createElement('style');
-  st.textContent = '#riderMap .gm-chip{flex-direction:column;align-items:stretch;gap:8px}#riderMap .gm-chip span{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}#riderMap .gm-chip a{text-align:center;padding:10px 14px;font-size:15.5px}#riderMap .gm-attr{font-size:11px;color:#fff}' + '.sv-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:6px;color:var(--ink)}.sv-row>span{min-width:0;overflow-wrap:anywhere;font-weight:700}.sv-row b{white-space:nowrap;font-size:18px}.sv-row b.neg{color:#c0392b}.sv-row .btn{margin-left:6px}#prBox select{width:100%;min-height:48px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:0 10px;font-size:16px}#prBox{margin-top:14px}' + '#sheet.sheet{bottom:calc(80px + env(safe-area-inset-bottom,0px))!important;padding-inline:12px!important;z-index:21!important}.sc-wrap{pointer-events:auto;max-width:520px;margin-inline:auto;display:flex;flex-direction:column;gap:8px;max-height:min(58vh,470px);overflow:auto;padding:2px}' +
+  st.textContent = '' + '.sv-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:6px;color:var(--ink)}.sv-row>span{min-width:0;overflow-wrap:anywhere;font-weight:700}.sv-row b{white-space:nowrap;font-size:18px}.sv-row b.neg{color:#c0392b}.sv-row .btn{margin-left:6px}#prBox select{width:100%;min-height:48px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:0 10px;font-size:16px}#prBox{margin-top:14px}' + '#sheet.sheet{bottom:calc(80px + env(safe-area-inset-bottom,0px))!important;padding-inline:12px!important;z-index:21!important}.sc-wrap{pointer-events:auto;max-width:520px;margin-inline:auto;display:flex;flex-direction:column;gap:8px;max-height:min(58vh,470px);overflow:auto;padding:2px}' +
     '.sc{background:var(--surface);color:var(--ink);border:2px solid var(--accent);border-radius:16px;padding:10px 12px 12px;display:flex;flex-direction:column;gap:7px;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:rise .22s ease-out both}' +
     '.sc.gone{text-align:center;font-weight:700;padding:14px;border-color:var(--line)}' +
     '.sc-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:19px;line-height:1.15}.sc-h b{overflow-wrap:anywhere}.sc-h span{font-size:13px;font-weight:800;color:var(--muted);white-space:nowrap}' +
@@ -1542,7 +1542,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 23';
+const APP_V = '23-oct-2026 · 24';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -2346,7 +2346,7 @@ document.addEventListener('click', (e) => {
   window.__mapSync = sync; window.__gmap = UI;
   window.addEventListener('resize', () => { try { if (UI.wrap && !UI.wrap.hidden) sizeIt(); } catch (e) {} });
   const st = document.createElement('style');
-  st.textContent = '#riderMap{position:relative;margin:4px -13px 8px;border-radius:16px;overflow:hidden;background:#0a3047;box-shadow:0 2px 10px rgba(0,0,0,.25);isolation:isolate}#riderMap[hidden]{display:none}' +
+  st.textContent = '#riderMap .gm-chip{flex-direction:column;align-items:stretch;gap:8px}#riderMap .gm-chip span{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}#riderMap .gm-chip a{text-align:center;padding:10px 14px;font-size:15.5px}#riderMap .gm-attr{font-size:11px;color:#fff}' + '#riderMap{position:relative;margin:4px -13px 8px;border-radius:16px;overflow:hidden;background:#0a3047;box-shadow:0 2px 10px rgba(0,0,0,.25);isolation:isolate}#riderMap[hidden]{display:none}' +
     '.gm-canvas{position:absolute;inset:0;touch-action:none;overflow:hidden;cursor:grab;background:#0a3047}.gm-tiles,.gm-mk{position:absolute;inset:0}.gm-t{position:absolute;left:0;top:0;max-width:none;user-select:none;-webkit-user-drag:none;filter:invert(1) hue-rotate(188deg) brightness(.85) contrast(.95) saturate(.5);will-change:transform}' +
     '.gm-tint{position:absolute;inset:0;background:#0d5a80;mix-blend-mode:screen;opacity:.5;pointer-events:none}.gm-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}.gm-rc{fill:none;stroke:#0b1620;stroke-width:11;stroke-linecap:round;stroke-linejoin:round;opacity:.75}.gm-rl{fill:none;stroke:#f6a000;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}' +
     '.gm-m{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}.gm-me i{position:absolute;left:-11px;top:-11px;width:22px;height:22px;border-radius:50%;background:#2f7df6;border:3.5px solid #fff;box-shadow:0 0 0 8px rgba(47,125,246,.28),0 2px 6px rgba(0,0,0,.5)}' +
@@ -4142,4 +4142,23 @@ function recHtml(done) {
       }
     }
   }, 400);
+})();
+
+// Guía de instalación solo para iPhone (Safari, sin instalar)
+(() => {
+  try {
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    const inst = window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+    if (!ios || inst || localStorage.getItem('gasca_ioshint') === '1') return;
+    const show = () => {
+      if (document.getElementById('iosHint')) return;
+      const d = document.createElement('div');
+      d.id = 'iosHint';
+      d.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:60;background:#16202a;color:#fff;border-radius:16px;padding:14px 16px;font-size:15px;line-height:1.45;box-shadow:0 6px 24px rgba(0,0,0,.4)';
+      d.innerHTML = '<b>Instala Gasca en tu iPhone</b><br>1. Toca el botón de compartir (el cuadro con la flecha ↑).<br>2. Elige “Agregar a pantalla de inicio”.<br>3. Abre Gasca desde el ícono.<br><button type="button" style="margin-top:10px;width:100%;border:0;border-radius:99px;padding:10px;font-size:15px;font-weight:700;background:#fff;color:#16202a">Entendido</button>';
+      d.querySelector('button').onclick = () => { try { localStorage.setItem('gasca_ioshint', '1'); } catch (e) {} d.remove(); };
+      document.body.appendChild(d);
+    };
+    if (document.body) setTimeout(show, 800); else addEventListener('DOMContentLoaded', () => setTimeout(show, 800));
+  } catch (e) {}
 })();
