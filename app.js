@@ -1482,7 +1482,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '22-oct-2026 · 10';
+const APP_V = '22-oct-2026 · 11';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -1711,7 +1711,9 @@ function cambioCard(c) {
   const u = S.users.find((x) => x.id === c.uid) || {}, busy = S.busy.has('cp' + c.uid);
   const ln = (k, a, b) => (a || '') === (b || '') ? '' : '<div class="line"><span class="k">' + k + '</span><span class="v">' + esc(a || '—') + ' → <b>' + esc(b) + '</b></span></div>';
   return '<article class="order"><div class="head"><span class="folio">' + esc(repTag(c.uid) + (u.name || c.name)) + '</span><span class="chip abierto">Cambio de perfil</span><span class="ago">' + ago(c.creadoEn) + '</span></div>' +
-    ln('Nombre', u.name, c.name) + ln('Dirección', u.addr, c.addr) +
+    ln('Nombre', u.name, c.name) + ln('Dirección', u.addr, c.addr) + ln('Teléfono', u.tel, c.tel) +
+    (c.tel ? '<div class="line"><span class="k">Para confirmar</span><span class="v"><b>' + esc(c.tel) + '</b></span></div><div class="links"><a href="' + esc(waUrl(c.tel)) + '" target="_blank" rel="noopener">💬 WhatsApp</a><a href="tel:' + esc(c.tel) + '">📞 Llamar</a></div>' : '<p class="hint">Este negocio no mandó teléfono.</p>') +
+    (u.tel && u.tel !== c.tel ? '<div class="line"><span class="k">Teléfono anterior</span><span class="v">' + esc(u.tel) + '</span></div><div class="links"><a href="' + esc(waUrl(u.tel)) + '" target="_blank" rel="noopener">💬 WhatsApp al anterior</a></div>' : '') +
     '<div class="field"><label for="cp-motivo-' + esc(c.uid) + '">Motivo si lo rechazas</label><input id="cp-motivo-' + esc(c.uid) + '" type="text" maxlength="160" placeholder="Ej. La dirección no coincide con tu local"></div>' +
     '<div class="actions"><button class="btn danger small" type="button" data-act="cp-no" data-id="' + esc(c.uid) + '"' + (busy ? ' disabled' : '') + '>Rechazar</button>' +
     '<button class="btn primary small" type="button" data-act="cp-ok" data-id="' + esc(c.uid) + '"' + (busy ? ' disabled' : '') + '>Aprobar</button></div></article>';
@@ -1722,7 +1724,7 @@ async function resolveCambio(id, ok) {
   S.busy.add(k); render();
   try {
     if (ok) {
-      await updateDoc(doc(db, 'users', id), { name: c.name, addr: c.addr });
+      await updateDoc(doc(db, 'users', id), { name: c.name, addr: c.addr, tel: c.tel || '' });
       await updateDoc(doc(db, 'cambiosPerfil', id), { estado: 'aprobado', en: Date.now() });
       toast('Cambios aprobados.');
     } else {
@@ -3834,9 +3836,9 @@ function epHtml(msg) {
   if (msg) top = '<p class="rc-st">' + msg + '</p>';
   else if (pend) top = '<p class="rc-st">⏳ Tus cambios están <b>en revisión</b> por la administración. Mientras tanto se usa tu información actual.</p>';
   else if (c && c.estado === 'rechazado') top = '<p class="rc-st">❌ No se aprobaron tus últimos cambios' + (c.motivo ? ': <b>' + esc(c.motivo) + '</b>' : '') + '. Puedes corregirlos y enviarlos otra vez.</p>';
-  const nm = pend ? c.name : (c && c.estado === 'rechazado' ? c.name : S.name), ad = pend ? c.addr : (c && c.estado === 'rechazado' ? c.addr : S.addr);
-  return '<div class="rc"><h3>✏️ Editar perfil</h3>' + top + '<p>Los cambios los revisa la administración antes de aplicarse.</p>' +
-    '<form autocomplete="off"><label>Nombre del negocio<input name="name" maxlength="60" value="' + esc(nm || '') + '"></label><label>Dirección del negocio<input name="addr" maxlength="160" placeholder="Calle, número, colonia, ciudad" value="' + esc(ad || '') + '"></label>' +
+  const tl = (pend || (c && c.estado === 'rechazado')) ? c.tel : (S.profile && S.profile.tel), nm = pend ? c.name : (c && c.estado === 'rechazado' ? c.name : S.name), ad = pend ? c.addr : (c && c.estado === 'rechazado' ? c.addr : S.addr);
+  return '<div class="rc"><h3>✏️ Editar perfil</h3>' + top + '<p>Los cambios los revisa la administración antes de aplicarse. Te marcarán a este WhatsApp para confirmar.</p>' +
+    '<form autocomplete="off"><label>Nombre del negocio<input name="name" maxlength="60" value="' + esc(nm || '') + '"></label><label>WhatsApp del negocio (10 dígitos)<input name="tel" type="tel" inputmode="numeric" maxlength="10" placeholder="3111234567" value="' + esc(tl || '') + '"></label><label>Dirección del negocio<input name="addr" maxlength="160" placeholder="Calle, número, colonia, ciudad" value="' + esc(ad || '') + '"></label>' +
     '<p class="rc-er" role="alert"></p><button type="submit" class="btn primary block">' + (pend ? 'Reenviar cambios' : 'Enviar para aprobación') + '</button></form><button type="button" class="btn ghost block" data-ep="close">Cerrar</button></div>';
 }
 function openEditPerfil() {
@@ -3846,12 +3848,13 @@ function openEditPerfil() {
     ov.addEventListener('click', (e) => { if (e.target === ov || (e.target.closest && e.target.closest('[data-ep=close]'))) ov.hidden = true; });
     ov.addEventListener('submit', async (e) => {
       e.preventDefault(); const f = e.target, er = f.querySelector('.rc-er'), btn = f.querySelector('button[type=submit]');
-      const name = f.name.value.trim().replace(/\s+/g, ' '), addr = f.addr.value.trim().replace(/\s+/g, ' ');
+      const tel = f.tel.value.replace(/\D/g, ''), name = f.name.value.trim().replace(/\s+/g, ' '), addr = f.addr.value.trim().replace(/\s+/g, ' ');
       if (name.length < 2) { er.textContent = 'Escribe el nombre del negocio.'; return; }
       if (addr.length < 8) { er.textContent = 'Escribe la dirección completa: calle, número, colonia y ciudad.'; return; }
-      if (name === (S.name || '') && addr === (S.addr || '')) { er.textContent = 'No cambiaste nada.'; return; }
+      if (tel.length !== 10) { er.textContent = 'Escribe tu WhatsApp con 10 dígitos.'; return; }
+      if (name === (S.name || '') && addr === (S.addr || '') && tel === ((S.profile && S.profile.tel) || '')) { er.textContent = 'No cambiaste nada.'; return; }
       er.textContent = ''; btn.disabled = true; btn.textContent = 'Enviando…';
-      try { await setDoc(doc(db, 'cambiosPerfil', S.uid), { uid: S.uid, name, addr, estado: 'pendiente', creadoEn: Date.now() }); S.cambio = { uid: S.uid, name, addr, estado: 'pendiente', creadoEn: Date.now() }; ov.innerHTML = epHtml('✅ Enviado. La administración lo revisará pronto.'); render(); }
+      try { await setDoc(doc(db, 'cambiosPerfil', S.uid), { uid: S.uid, name, addr, tel, estado: 'pendiente', creadoEn: Date.now() }); S.cambio = { uid: S.uid, name, addr, tel, estado: 'pendiente', creadoEn: Date.now() }; ov.innerHTML = epHtml('✅ Enviado. La administración lo revisará pronto.'); render(); }
       catch (x) { er.textContent = 'No se pudo enviar. Intenta de nuevo.'; btn.disabled = false; btn.textContent = 'Enviar para aprobación'; }
     });
   }
