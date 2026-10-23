@@ -547,7 +547,7 @@ function onMyOrders(snap) {
     if (now && now.estado === 'cancelado') { beep([440, 330]); toast('Soporte canceló el pedido ' + folio(o.id) + '.'); }
     else if (!now) { beep([440, 330]); toast('Soporte reasignó el pedido ' + folio(o.id) + ' a otro repartidor.'); }
   });
-  next.filter(act).forEach((o) => { if (!was.some((w) => w.id === o.id) && !S.busy.has(o.id) && S.openReady) { beep([660, 990]); toast('Aceptaron tu oferta de ' + pesos(o.tarifa) + '. Ve por el pedido ' + folio(o.id) + '.'); } });
+  next.filter(act).forEach((o) => { if (!was.some((w) => w.id === o.id) && !S.busy.has(o.id) && S.openReady) { beep([660, 990]); toast('Aceptaron tu oferta de ' + pesos(o.tarifa) + '. Ve por el pedido ' + folio(o.id) + '.'); if (myOferta(o.id)) { S.oc = o.id; S.ocRo = false; S.tab = 'disp'; } } });
   S.myOrders = next; mergeOrders(); syncSheet(); render();
 }
 function onOfertas(snap) {
@@ -704,7 +704,7 @@ function onOpenOrders(snap) {
   if (S.online && fresh.length) {
     fresh.sort((a, b) => b.creadoEn - a.creadoEn);
     let pushed = 0;
-    fresh.forEach((o) => { if (!S.ignored.has(o.id) && inMyZone(o) && canTake(o) && S.queue.indexOf(o.id) < 0) { S.queue.unshift(o.id); pushed++; } });
+    fresh.forEach((o) => { if (!S.ignored.has(o.id) && inMyZone(o) && S.queue.indexOf(o.id) < 0) { S.queue.unshift(o.id); pushed++; } });
     if (pushed) { beep(); buzz(); }
   }
   syncSheet(); render();
@@ -720,7 +720,7 @@ function onShopOrders(snap) {
   S.openReady = true; S.myOrders = orders; mergeOrders(); render();
 }
 function queueOpen() {
-  S.orders.filter((o) => o.estado === 'abierto' && !S.ignored.has(o.id) && canTake(o))
+  S.orders.filter((o) => o.estado === 'abierto' && !S.ignored.has(o.id))
     .sort((a, b) => b.creadoEn - a.creadoEn)
     .forEach((o) => { if (S.queue.indexOf(o.id) < 0) S.queue.push(o.id); });
 }
@@ -1168,52 +1168,70 @@ function copyCode(c) {
 /* ---------- aviso de pedido nuevo (hoja inferior) ---------- */
 const OFFER_MS = 40000;
 function syncSheet() {
-  if (!S.online || view() !== 'rider') { S.sheetId = null; S.sheetTaken = null; clearTimeout(S.sheetT); renderSheet(); return; }
-  if (S.sheetTaken) { renderSheet(); return; }
-  if (S.sheetId) {
-    const cur = byId(S.sheetId);
-    if (cur && cur.estado === 'abierto') { renderSheet(); return; }
-    if (S.busy.has(S.sheetId)) { renderSheet(); return; } // lo estoy aceptando yo: no es "ya no disponible"
-    if (!cur || cur.driverId !== S.uid) {
-      const gone = S.sheetId;
-      S.sheetTaken = { id: gone }; clearTimeout(S.sheetT);
-      S.sheetT = setTimeout(() => { S.sheetTaken = null; S.queue = S.queue.filter((x) => x !== gone); S.sheetId = null; syncSheet(); }, 2400);
-      renderSheet(); return;
-    }
-    S.queue = S.queue.filter((x) => x !== S.sheetId); S.sheetId = null; clearTimeout(S.sheetT);
-  }
-  while (S.queue.length) {
-    const id = S.queue[0], o = byId(id);
-    if (!o || o.estado !== 'abierto' || S.ignored.has(id) || !canTake(o)) { S.queue.shift(); continue; }
-    S.sheetId = id; S.sheetAt = Date.now(); clearTimeout(S.sheetT);
-    S.sheetT = setTimeout(() => { S.ignored.add(id); S.queue = S.queue.filter((x) => x !== id); S.sheetId = null; syncSheet(); }, OFFER_MS);
-    if (view() === 'rider' && S.tab !== 'disp') { S.tab = 'disp'; setTimeout(() => { try { render(); } catch (e) {} }, 0); }
-    break;
-  }
+  if (!S.online || view() !== 'rider') { S.sheetId = null; S.gone = {}; S.seen = new Set(); renderSheet(); return; }
+  S.gone = S.gone || {}; S.seen = S.seen || new Set();
+  const now = Date.now(), keep = [];
+  S.queue.forEach((id) => {
+    if (S.ignored.has(id)) return;
+    const o = byId(id);
+    if (o && o.estado === 'abierto') { keep.push(id); return; }
+    if (S.busy.has(id)) { keep.push(id); return; }
+    if (o && o.driverId === S.uid) return; // me lo asignaron: ya no es un aviso
+    if (!S.gone[id]) { S.gone[id] = now; setTimeout(() => { try { syncSheet(); } catch (e) {} }, 2500); }
+    if (now - S.gone[id] < 2400) keep.push(id);
+  });
+  S.queue = keep;
+  S.sheetId = keep.find((id) => { const o = byId(id); return o && o.estado === 'abierto'; }) || null;
+  const fresh = keep.filter((id) => !S.seen.has(id));
+  fresh.forEach((id) => S.seen.add(id));
+  if (fresh.length && S.tab !== 'disp') { S.tab = 'disp'; setTimeout(() => { try { render(); } catch (e) {} }, 0); }
   renderSheet();
+}
+function sheetOffer(o) {
+  const d = pdesc(o); if (!d.tipo || o.estado !== 'abierto') return '';
+  const mo = myOferta(o.id);
+  if (mo) return '<p class="sc-of">' + (mo.estado === 'pendiente' ? 'Pediste <b>' + pesos(mo.monto) + '</b>. Esperando respuesta…' : mo.estado === 'rechazada' ? 'No aceptaron tu oferta de ' + pesos(mo.monto) + '.' : '') + '</p>';
+  const t = Number(o.tarifa), busy = S.busy.has('of' + o.id);
+  return '<div class="sc-of"><span>Ofertar:</span>' + [5, 10].map((n) => '<button class="sc-o" type="button" data-act="counter" data-id="' + esc(o.id) + '" data-m="' + (t + n) + '"' + (busy || !canAct() ? ' disabled' : '') + '>Pedir ' + pesos(t + n) + '</button>').join('') + '</div>';
+}
+function sheetCard(id) {
+  const o = byId(id), busy = S.busy.has(id);
+  if (!o || (o.estado !== 'abierto' && !busy)) return '<div class="sc gone">Este pedido ya no está disponible.</div>';
+  const dp = destParts(o.dest), gan = (Number(o.tarifa) || 0) - comC(o) / 100;
+  const ok = busy ? '<button class="sc-ok" type="button" disabled>Aceptando…</button>'
+    : (!canTake(o) ? '<button class="sc-ok low" type="button" data-act="tab" data-tab="saldo">Saldo insuficiente · Recargar</button>'
+      : '<button class="sc-ok" type="button" data-act="accept" data-id="' + esc(o.id) + '">Aceptar · ' + m2(gan) + '</button>');
+  return '<div class="sc" role="alertdialog" aria-label="Pedido nuevo"><div class="sc-h"><b>🔔 ' + esc(o.shop || 'Pedido nuevo') + '</b><span>' + folio(o.id) + '</span></div>' +
+    '<div class="sc-l"><i>📍</i><span><small>Recoge en</small>' + esc(o.pickup || '') + '</span></div>' +
+    '<div class="sc-l"><i>🏁</i><span><small>Entrega en</small>' + esc(dp.dir || '') + '</span></div>' +
+    sheetOffer(o) +
+    '<div class="sc-b"><button class="sc-no" type="button" data-act="ignore" data-id="' + esc(o.id) + '"' + (busy ? ' disabled' : '') + '>Rechazar</button>' + ok + '</div></div>';
 }
 function renderSheet(force) {
   const el = $('#sheet');
-  const o = S.sheetId ? byId(S.sheetId) : null;
-  const key = (S.sheetTaken ? 't' + S.sheetTaken.id : (o ? 'o' + o.id : '')) + '|' + (o && S.busy.has(o.id) ? 'b' : '');
-  if (!force && key === S.sheetKey) return;
-  S.sheetKey = key;
-  if (S.sheetTaken) { el.hidden = false; el.innerHTML = '<div class="sheet-in"><p class="sheet-taken">Este pedido ya no está disponible.</p></div>'; return; }
-  if (!o) { el.hidden = true; el.innerHTML = ''; return; }
-  const busy = S.busy.has(o.id);
-  el.hidden = false;
-  const com = comC(o) / 100, gan = (Number(o.tarifa) || 0) - com, r = window.__gmap && window.__gmap.route;
-  const dtxt = r && r.oid === o.id && r.m ? offerKm(r) : '';
-  el.innerHTML =
-    '<div class="sheet-in of" role="alertdialog" aria-label="Pedido nuevo">' +
-    '<div class="of-shop">' + esc(o.shop || 'Restaurante') + '</div>' +
-    '<div class="of-top"><div><small>Tu ganancia</small><b class="of-gan">' + m2(gan) + '</b></div><div class="of-d"><b id="shKm">' + esc(dtxt) + '</b><small>Hasta el restaurante</small></div></div>' +
-    offerBox(o) + offerBtns(o) +
-    '<div class="of-com">Comisión por usar la app ' + m2(com) + '</div>' +
-    '<div class="of-act"><button class="of-no" type="button" data-act="ignore" data-id="' + esc(o.id) + '">Rechazar</button>' +
-    '<button class="of-ok" type="button" data-act="accept" data-id="' + esc(o.id) + '"' + (busy ? ' disabled' : '') + '><i class="of-bar"></i><span class="of-t">' + (busy ? 'Aceptando…' : 'Aceptar') + '</span></button></div></div>';
-  tickOffer();
+  const ids = view() === 'rider' && S.online && S.tab === 'disp' && !S.oc ? S.queue : [];
+  const h = ids.length ? '<div class="sc-wrap">' + ids.map(sheetCard).join('') + '</div>' : '';
+  if (!force && h === S.sheetKey) return;
+  S.sheetKey = h;
+  if (!h) { el.hidden = true; el.innerHTML = ''; return; }
+  const w = el.querySelector('.sc-wrap'), top = w ? w.scrollTop : 0;
+  el.hidden = false; el.innerHTML = h;
+  const nw = el.querySelector('.sc-wrap'); if (nw) nw.scrollTop = top;
 }
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '#sheet.sheet{bottom:calc(80px + env(safe-area-inset-bottom,0px))!important;padding-inline:12px!important;z-index:21!important}.sc-wrap{pointer-events:auto;max-width:520px;margin-inline:auto;display:flex;flex-direction:column;gap:8px;max-height:min(58vh,470px);overflow:auto;padding:2px}' +
+    '.sc{background:var(--surface);color:var(--ink);border:2px solid var(--accent);border-radius:16px;padding:10px 12px 12px;display:flex;flex-direction:column;gap:7px;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:rise .22s ease-out both}' +
+    '.sc.gone{text-align:center;font-weight:700;padding:14px;border-color:var(--line)}' +
+    '.sc-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:19px;line-height:1.15}.sc-h b{overflow-wrap:anywhere}.sc-h span{font-size:13px;font-weight:800;color:var(--muted);white-space:nowrap}' +
+    '.sc-l{display:flex;gap:8px;align-items:flex-start;font-size:15.5px;line-height:1.25}.sc-l i{font-style:normal;flex:none}.sc-l span{display:flex;flex-direction:column;min-width:0;overflow-wrap:anywhere}.sc-l small{font-size:11.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}' +
+    '.sc-of{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px;margin:0;color:var(--ink)}.sc-of span{font-weight:800}' +
+    '.sc-o{border:1.5px solid var(--line);background:var(--surface2);color:var(--ink);border-radius:10px;padding:7px 12px;font-weight:800;font-size:14px}.sc-o:disabled{opacity:.55}' +
+    '.sc-b{display:grid;grid-template-columns:auto 1fr;gap:8px;margin-top:2px}' +
+    '.sc-no{min-height:50px;border:2px solid var(--line);background:var(--surface);color:var(--ink);border-radius:13px;padding:0 16px;font-weight:800;font-size:16px}' +
+    '.sc-ok{min-height:50px;border:0;background:var(--accent);color:var(--on-accent);border-radius:13px;padding:0 12px;font-weight:800;font-size:16.5px}.sc-ok.low{background:var(--surface2);color:var(--ink);border:2px solid var(--line);font-size:14.5px}.sc-ok:disabled{opacity:.6}';
+  document.head.appendChild(st);
+})();
 function offerKm(r) { return (r.m < 1000 ? Math.round(r.m / 10) * 10 + ' m' : (r.m / 1000).toFixed(1) + ' km') + ' · ~' + Math.max(1, Math.round(r.s / 60)) + ' min'; }
 function offerBox(o) {
   const d = pdesc(o), T = pesos(o.tarifa), P = pesos(d.prod), rec = d.quien === 'r', rows = [];
@@ -1490,7 +1508,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 18';
+const APP_V = '23-oct-2026 · 19';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -1592,6 +1610,7 @@ function renderRider() {
     const hint = (lowS ? '<p class="warn">Tu saldo no alcanza para algunos pedidos. Recarga en la motito.</p>' : '') + (far.length ? '<p class="warn">Hay ' + far.length + (far.length === 1 ? ' pedido abierto' : ' pedidos abiertos') + ' que no te quedan cerca (a más de ' + (S.radioKm || 3) + ' km) o aún no se ubica su dirección.</p>' : '');
     av.innerHTML = !S.openReady ? '' : hint + (open.length ? '<div class="subhead">Pedidos disponibles (' + open.length + ')</div>' + open.map(availCard).join('') : '');
   }
+  try { renderSheet(); } catch (e) {}
   try { window.__mapSync && window.__mapSync({ offer: S.sheetId ? byId(S.sheetId) : null, active, act0: active.length ? active[active.length - 1] : null, done, doneToday }); } catch (e) { console.warn('mapa', e); }
   if (S.tab === 'viajes') {
     const wk = new Date(); wk.setHours(0, 0, 0, 0); wk.setDate(wk.getDate() - ((wk.getDay() + 6) % 7));
@@ -2064,7 +2083,7 @@ document.addEventListener('click', (e) => {
   else if (act === 're-offer') reOffer(id);
   else if (act === 'of-yes') offerYes(b.getAttribute('data-oid'));
   else if (act === 'of-no') offerNo(b.getAttribute('data-oid'));
-  else if (act === 'ignore') { S.ignored.add(id); S.queue = S.queue.filter((x) => x !== id); S.sheetId = null; clearTimeout(S.sheetT); syncSheet(); }
+  else if (act === 'ignore') { S.ignored.add(id); S.queue = S.queue.filter((x) => x !== id); S.sheetId = null; clearTimeout(S.sheetT); syncSheet(); render(); }
   else if (act === 'vj-recharge') { S.tab = 'saldo'; S.rechargeOpen = true; S.cancelId = null; render(); window.scrollTo(0, 0); }
   else if (act === 'recharge-toggle') { S.rechargeOpen = !S.rechargeOpen; render(); }
   else if (act === 'amt') { $('#r-monto').value = b.getAttribute('data-v'); }
@@ -2983,7 +3002,7 @@ function cliSum() {
     if (on) startKeep(); else stopKeep();
     const cur = on ? S.sheetId : null;
     if (cur && cur !== lastSheet) {
-      ring(); clearInterval(ringT); ringT = setInterval(() => { if (S.sheetId) ring(); else { clearInterval(ringT); ringT = null; } }, 3000);
+      ring(); clearInterval(ringT); const t0 = Date.now(); ringT = setInterval(() => { if (S.sheetId && Date.now() - t0 < 45000) ring(); else { clearInterval(ringT); ringT = null; } }, 3000);
       if (document.hidden) {
         notify('Toca para ver el pedido y aceptarlo.');
         clearInterval(titleT); let k = 0;
