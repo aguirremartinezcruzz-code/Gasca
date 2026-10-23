@@ -830,7 +830,7 @@ function ocFab() {
   let f = document.getElementById('gmOrd');
   if (!f) { f = document.createElement('button'); f.id = 'gmOrd'; f.type = 'button'; f.className = 'gm-ord'; f.setAttribute('data-act', 'oc-open'); f.hidden = true; f.textContent = '🧾 Ver orden'; document.body.appendChild(f); }
   const a = view() === 'rider' && !S.oc && S.tab === 'disp' && !S.sheetId ? mine().filter((x) => x.estado === 'asignado' || x.estado === 'recogido').sort((x, y) => (y.asignadoEn || 0) - (x.asignadoEn || 0))[0] : null;
-  f.hidden = !a; if (a) f.setAttribute('data-id', a.id);
+  f.hidden = true; if (a) f.setAttribute('data-id', a.id); // el botón grande vive ahora dentro del recuadro del mapa
   f.style.position = 'fixed';
 }
 function ocSync() {
@@ -1542,7 +1542,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 24';
+const APP_V = '23-oct-2026 · 25';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -2340,13 +2340,13 @@ document.addEventListener('click', (e) => {
     const dtxt = r && r.m ? ' · ' + (r.m < 1000 ? Math.round(r.m / 10) * 10 + ' m' : (r.m / 1000).toFixed(1) + ' km') + ' · ' + Math.max(1, Math.round(r.s / 60)) + ' min' : '';
     const extra = pend ? ' · ubicando…' : miss ? ' · no la ubico en el mapa, usa Google Maps' : dtxt + (apx ? ' · aprox.' : '');
     const nav = mapsUrl(o.estado === 'asignado' ? o.pickup : o.dest); // Google encuentra la dirección escrita mejor que el mapa de apoyo
-    const html = '<span>' + esc(lbl + extra) + '</span><a href="' + esc(nav) + '" target="_blank" rel="noopener">Navegar</a>';
+    const html = '<span>' + esc(lbl + extra) + '</span><a href="' + esc(nav) + '" target="_blank" rel="noopener">Navegar en Google Maps</a><button type="button" class="gm-vo" data-act="oc-open" data-id="' + esc(o.id) + '">🧾 Ver orden de pedido</button>';
     if (UI.chip !== html) { UI.chip = html; chip.innerHTML = html; chip.hidden = false; }
   }
   window.__mapSync = sync; window.__gmap = UI;
   window.addEventListener('resize', () => { try { if (UI.wrap && !UI.wrap.hidden) sizeIt(); } catch (e) {} });
   const st = document.createElement('style');
-  st.textContent = '#riderMap .gm-chip{flex-direction:column;align-items:stretch;gap:8px}#riderMap .gm-chip span{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}#riderMap .gm-chip a{text-align:center;padding:10px 14px;font-size:15.5px}#riderMap .gm-attr{font-size:11px;color:#fff}' + '#riderMap{position:relative;margin:4px -13px 8px;border-radius:16px;overflow:hidden;background:#0a3047;box-shadow:0 2px 10px rgba(0,0,0,.25);isolation:isolate}#riderMap[hidden]{display:none}' +
+  st.textContent = '#riderMap .gm-chip{flex-direction:column;align-items:stretch;gap:8px}#riderMap .gm-chip span{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}#riderMap .gm-chip a{text-align:center;padding:10px 14px;font-size:15.5px}#riderMap .gm-chip .gm-vo{border:0;font:inherit;font-size:15.5px;font-weight:700;text-align:center;padding:10px 14px;background:#16202a;color:#fff;border-radius:99px;cursor:pointer}#riderMap .gm-attr{font-size:11px;color:#fff}' + '#riderMap{position:relative;margin:4px -13px 8px;border-radius:16px;overflow:hidden;background:#0a3047;box-shadow:0 2px 10px rgba(0,0,0,.25);isolation:isolate}#riderMap[hidden]{display:none}' +
     '.gm-canvas{position:absolute;inset:0;touch-action:none;overflow:hidden;cursor:grab;background:#0a3047}.gm-tiles,.gm-mk{position:absolute;inset:0}.gm-t{position:absolute;left:0;top:0;max-width:none;user-select:none;-webkit-user-drag:none;filter:invert(1) hue-rotate(188deg) brightness(.85) contrast(.95) saturate(.5);will-change:transform}' +
     '.gm-tint{position:absolute;inset:0;background:#0d5a80;mix-blend-mode:screen;opacity:.5;pointer-events:none}.gm-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}.gm-rc{fill:none;stroke:#0b1620;stroke-width:11;stroke-linecap:round;stroke-linejoin:round;opacity:.75}.gm-rl{fill:none;stroke:#f6a000;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}' +
     '.gm-m{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}.gm-me i{position:absolute;left:-11px;top:-11px;width:22px;height:22px;border-radius:50%;background:#2f7df6;border:3.5px solid #fff;box-shadow:0 0 0 8px rgba(47,125,246,.28),0 2px 6px rgba(0,0,0,.5)}' +
