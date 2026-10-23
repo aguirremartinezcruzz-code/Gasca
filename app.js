@@ -1542,7 +1542,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 21';
+const APP_V = '23-oct-2026 · 22';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -3268,6 +3268,21 @@ function wzDone(id) {
 }
 setInterval(wzSync, 400);
 
+/* Respaldo: si la conexión en vivo se duerme (pantalla apagada, otra app), el solicitante revisa sus pedidos cada 12 s y al volver a la app. */
+(function () {
+  let busy = false;
+  async function poll() {
+    if (busy || S.role !== 'shop' || !S.roleOn || view() !== 'shop' || document.hidden) return;
+    if (!S.myOrders.some((o) => o.estado === 'abierto' || o.estado === 'asignado' || o.estado === 'recogido')) return;
+    busy = true;
+    try { const snap = await getDocs(query(collection(db, 'orders'), where('shopId', '==', S.uid))); if (view() === 'shop') onShopOrders(snap); } catch (e) {}
+    busy = false;
+  }
+  setInterval(poll, 12000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(poll, 400); });
+  window.addEventListener('online', () => setTimeout(poll, 400));
+})();
+
 /* ---------- aviso animado: "tu pedido fue entregado" ---------- */
 const DELIV_SVG = '<svg viewBox="0 0 120 70" width="96" height="56" aria-hidden="true"><g class="dv-lines" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".35"><path d="M2 28h14"/><path d="M6 38h12"/><path d="M0 48h10"/></g><g class="dv-bike">' +
   '<g class="dv-wheel" style="transform-origin:34px 54px"><circle cx="34" cy="54" r="11" fill="none" stroke="currentColor" stroke-width="3.5"/><path d="M34 45v18M25 54h18" stroke="currentColor" stroke-width="2"/></g>' +
@@ -3287,9 +3302,13 @@ function delivNotice(o) {
     document.body.appendChild(d);
     d.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-dvh]')) { e.preventDefault(); S.tab = 'historial'; d.classList.remove('on'); render(); } });
   }
-  d.innerHTML = '<div class="dv-ic">' + DELIV_SVG + '</div><div><b>¡Entregado con éxito!</b><span>Tu servicio ' + esc(folio(o.id)) + ' ha sido entregado con éxito. Gracias por usar Gasca.</span><br><a href="#" data-dvh="1">Ver historial</a></div>';
+  d.innerHTML = '<div class="dv-ic">' + DELIV_SVG + '</div><div><b>¡Pedido entregado con éxito!</b><span>Tu servicio ' + esc(folio(o.id)) + ' ha sido entregado con éxito. Gracias por usar Gasca.</span><br><a href="#" data-dvh="1">Ver historial</a></div>';
   requestAnimationFrame(() => d.classList.add('on'));
-  clearTimeout(delivT); delivT = setTimeout(() => d.classList.remove('on'), 7000);
+  clearTimeout(delivT); delivT = setTimeout(() => {
+    d.classList.remove('on');
+    // solicitud personal: al cerrarse el aviso regresa solo al menú principal (nuevo pedido)
+    try { if (view() === 'shop' && isCli(S.profile)) { S.tab = 'nuevo'; render(); window.scrollTo(0, 0); } } catch (e) {}
+  }, 4500);
   try { buzz(); } catch (e) {}
 }
 
