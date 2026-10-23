@@ -1245,7 +1245,12 @@ function pdesc(o) {
   if (i < 0) return { t: d };
   const m = d.slice(i + 2).split('|');
   if (!/^[evp]$/.test(m[0] || '') || !/^[re]$/.test(m[2] || '')) return { t: d };
-  return { t: d.slice(0, i), tipo: m[0], prod: Number(m[1]) || 0, quien: m[2] };
+  return { t: d.slice(0, i), tipo: m[0], prod: Number(m[1]) || 0, quien: m[2], eq: /^[mca]$/.test(m[3] || '') ? m[3] : '' };
+}
+function eqNote(o) {
+  const q = pdesc(o).eq; if (!q) return '';
+  const t = q === 'm' ? '🎒 <b>Necesita mochila.</b> Va en mochila.' : q === 'c' ? '📦 <b>Necesita caja.</b> No cabe en mochila: si tu moto no tiene caja, mejor no lo aceptes.' : '🎒📦 <b>Mochila o caja, como tengas.</b> A quien envía no le importa.';
+  return '<p class="paynote">' + t + '</p>';
 }
 function payNote(o) {
   const d = pdesc(o); if (!d.tipo) return '';
@@ -1382,7 +1387,7 @@ function renderShop() {
     hv.hidden = S.tab !== 'historial';
     if (S.tab === 'historial') hv.innerHTML = !S.openReady ? emptyBox('Cargando historial', 'Un momento.') : histHtml(list); }
   { const mn = $('#minNote'); mn.hidden = !(isCli(S.profile) && S.minOffer); mn.textContent = 'Nadie tomó tu oferta de ' + pesos(S.minOffer) + '. Pon ' + pesos(S.minOffer) + ' o más para intentar de nuevo.'; $('#o-tarifa').min = isCli(S.profile) && S.minOffer ? String(S.minOffer) : '1'; }
-  { const cli = isCli(S.profile); $('#cliPay').hidden = !cli; $('#cliQuien').hidden = !cli; $('#fProd').hidden = !cli; $('#paySum').hidden = !cli; $('#o-cobro').closest('.field').hidden = cli; $('#orderForm .pair').style.gridTemplateColumns = cli ? '1fr' : '';
+  { const cli = isCli(S.profile); $('#cliEq').hidden = !cli; $('#cliPay').hidden = !cli; $('#cliQuien').hidden = !cli; $('#fProd').hidden = !cli; $('#paySum').hidden = !cli; $('#o-cobro').closest('.field').hidden = cli; $('#orderForm .pair').style.gridTemplateColumns = cli ? '1fr' : '';
     $('label[for=o-tarifa]').textContent = cli ? 'Oferta por el mandadito' : 'Pago al repartidor'; $('#o-tarifa').placeholder = cli ? '$ cuánto ofreces pagar por el mandadito' : '$ envío';
     $('label[for=o-desc]').textContent = cli ? '¿Qué vas a enviar?' : 'Qué se entrega'; $('#o-desc').placeholder = cli ? 'Ej. Un martillo, zapatos escolares' : 'Ej. 2 pizzas grandes y 1 refresco'; }
   { const cli = isCli(S.profile), pk = $('#o-pick'), box = pk.closest('.field'), pf = $('#pickFields');
@@ -1403,7 +1408,7 @@ function availCard(o) {
     '<div class="line"><span class="k">Recoger en</span><span class="v">' + esc(o.shop) + ' · ' + esc(o.pickup) + zoneTag(o) + '</span></div>' +
     '<div class="line"><span class="k">Entregar en</span><span class="v">' + esc(o.dest) + '</span></div>' + distLine(o) +
     '<div class="line"><span class="k">Lleva</span><span class="v">' + esc(pdesc(o).t) + '</span></div>' +
-    moneyRow(o) + payNote(o) +
+    moneyRow(o) + eqNote(o) + payNote(o) +
     '<p class="hint">Comisión de ' + cents(comC(o)) + ' (13%) al entregar.</p>' +
     '<div class="actions">' + acceptBtn(o, S.busy.has(o.id)) + '</div>' + offerBtns(o) + '</article>';
 }
@@ -1419,7 +1424,7 @@ function tripCard(o) {
     '<div class="line"><span class="k">Recoger en</span><span class="v">' + esc(o.shop) + ' · ' + esc(o.pickup) + '</span></div>' +
     orderLines(o) +
     (o.tel ? '<div class="line"><span class="k">Teléfono del cliente</span><span class="v">' + esc(o.tel) + '</span></div>' : '') +
-    moneyRow(o) + payNote(o) + links + '<div class="actions">' + btn + '</div>' +
+    moneyRow(o) + eqNote(o) + payNote(o) + links + '<div class="actions">' + btn + '</div>' +
     (o.estado === 'recogido' ? '<button class="btn ghost small block" type="button" data-act="noans" data-id="' + esc(o.id) + '">📵 Ya llegué y no sale el cliente</button>' : '') +
     (o.estado === 'recogido' ? '<button class="btn primary small block" type="button" data-act="libcode" data-id="' + esc(o.id) + '">🔑 Tengo un código de administración</button>' : '') +
     '<button class="btn ghost small block" type="button" data-act="issue" data-id="' + esc(o.id) + '">Tengo un problema</button></article>';
@@ -1482,7 +1487,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '22-oct-2026 · 11';
+const APP_V = '22-oct-2026 · 12';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -1946,7 +1951,7 @@ $('#orderForm').addEventListener('submit', async (e) => {
     if (tp === 'v' && prod <= 0) { toast('Escribe cuánto cuesta el producto.'); btn.disabled = false; btn.textContent = 'Pedir moto'; return; }
     if (S.minOffer && tarifa < S.minOffer) { toast('Tu oferta debe ser de ' + pesos(S.minOffer) + ' o más.'); btn.disabled = false; btn.textContent = 'Pedir moto'; return; }
     cobro = Math.round((prod + (qp === 'r' ? tarifa : 0)) * 100) / 100;
-    descTxt = descTxt.slice(0, 90) + DSEP + tp + '|' + prod + '|' + qp;
+    descTxt = descTxt.slice(0, 90) + DSEP + tp + '|' + prod + '|' + qp + '|' + ((document.querySelector('input[name=ceq]:checked') || {}).value || 'a');
   }
   const o = {
     shopId: S.uid, shop: S.name, pickup: isCli(S.profile) ? buildPick() : $('#o-pick').value.trim(), cliente: $('#o-cliente').value.trim(), tel: $('#o-tel').value.trim(),
@@ -2901,6 +2906,8 @@ function cliSum() {
   const pair = document.querySelector('#orderForm .pair'); if (!pair) return;
   const card = (n, v, t, sm, chk) => '<label class="role"><input type="radio" name="' + n + '" value="' + v + '"' + (chk ? ' checked' : '') + '><span class="card-r"><b>' + t + '</b><small>' + sm + '</small></span></label>';
   pair.insertAdjacentHTML('beforebegin',
+    '<div id="cliEq" hidden><div class="field sec-h"><label>¿En qué lo llevamos?</label></div><div class="roles" style="grid-template-columns:1fr">' +
+    card('ceq', 'm', '🎒 Mochila', 'Comida, ropa, paquetes chicos.') + card('ceq', 'c', '📦 Caja', 'Cosas grandes o que no caben en mochila: herramientas, una sierra, una bolsa de clavos.') + card('ceq', 'a', '🤷 No importa', 'Mochila o caja, el que tenga el repartidor.', true) + '</div></div>' +
     '<div id="cliPay" hidden><div class="field sec-h"><label>¿Hay una venta de por medio?</label></div><div class="roles" style="grid-template-columns:1fr">' +
     card('ctipo', 'e', 'No, solo es un envío', 'Por ejemplo, un martillo prestado.', true) +
     card('ctipo', 'v', 'Sí, me pagan al recoger', 'El repartidor te paga el producto al recoger y lo cobra a quien recibe.') +
@@ -3018,6 +3025,7 @@ function wzSave() {
   ['o-desc', 'o-tarifa', 'o-cobro', 'o-prod', 'p-calle', 'p-col', 'p-ciudad', 'p-mun'].forEach((i) => { last[i] = ($('#' + i).value || '').trim(); });
   last.ctipo = (document.querySelector('input[name=ctipo]:checked') || {}).value || 'e';
   last.cquien = (document.querySelector('input[name=cquien]:checked') || {}).value || 'r';
+  last.ceq = (document.querySelector('input[name=ceq]:checked') || {}).value || 'a';
   lsSet(wzLastKey(), JSON.stringify(last));
 }
 function wzFill(o, ids) {
@@ -3031,6 +3039,7 @@ function wzBuild() {
   const pay = [pair, $('#minNote')];
   WZ.steps = cli ? [
     { t: '📦 ¿Qué vas a enviar?', h: 'Por ejemplo: un martillo, zapatos escolares, un paquete.', e: [wzF('o-desc'), $('#wzLast')] },
+    { t: '🛵 ¿En qué lo llevamos?', h: 'Elige si necesita mochila o caja. Así el repartidor sabe si puede ir.', e: [$('#cliEq')] },
     { t: '🛍️ ¿Hay una venta de por medio?', h: 'Elige una opción. Si el repartidor tiene que pagar o cobrar un producto, aquí lo indicas.', e: [$('#cliPay'), $('#fProd')], chk: 'v' },
     { t: '💵 ¿Quién paga el mandadito?', h: 'Y cuánto ofreces. Los repartidores pueden aceptar tu oferta o proponerte otra.', e: [$('#cliQuien')].concat(pay), chk: 'o' },
     { t: '📍 ¿Dónde lo recogemos?', h: 'La dirección de donde el repartidor va a recoger.', e: [$('#pickFields')] },
@@ -3046,12 +3055,12 @@ function wzBuild() {
   ];
   WZ.all = [];
   WZ.steps.forEach((st) => st.e.forEach((x) => { if (x && WZ.all.indexOf(x) < 0) WZ.all.push(x); }));
-  [wzF('o-calle').previousElementSibling, pk, $('#paySum'), $('#cliPay'), $('#cliQuien'), $('#fProd'), $('#pickFields'), $('#minNote')].forEach((x) => { if (x && WZ.all.indexOf(x) < 0) WZ.all.push(x); });
+  [wzF('o-calle').previousElementSibling, pk, $('#paySum'), $('#cliEq'), $('#cliPay'), $('#cliQuien'), $('#fProd'), $('#pickFields'), $('#minNote')].forEach((x) => { if (x && WZ.all.indexOf(x) < 0) WZ.all.push(x); });
 }
 function wzSumHtml() {
   const cli = isCli(S.profile), row = (k, v, n) => '<div class="line"><span class="k">' + k + '</span><span class="v">' + esc(v) + ' <a href="#" data-wzgo="' + n + '">Cambiar</a></span></div>';
   const n = (i) => i; let h = '<div class="sumbox wzsum"><b>Tu pedido</b>';
-  if (cli) h += row('Lleva', val('o-desc'), 0) + row('Recoger en', buildPick(), 3) + row('Entregar a', val('o-cliente') + ' · ' + val('o-tel') + ' · ' + buildDest(), 4);
+  if (cli) h += row('Lleva', val('o-desc'), 0) + row('Va en', ({ m: '🎒 Mochila', c: '📦 Caja', a: '🤷 No importa' })[(document.querySelector('input[name=ceq]:checked') || {}).value || 'a'], 1) + row('Recoger en', buildPick(), 4) + row('Entregar a', val('o-cliente') + ' · ' + val('o-tel') + ' · ' + buildDest(), 5);
   else h += row('Lleva', val('o-desc'), 0) + row('Entregar a', val('o-cliente') + ' · ' + val('o-tel') + ' · ' + buildDest(), 1) +
     row('Cobrar al cliente', Number($('#o-cobro').value) > 0 ? pesos(Number($('#o-cobro').value)) : 'Ya pagó', 3) + row('Pago al repartidor', pesos(Number($('#o-tarifa').value) || 0), 3);
   return h + '</div>';
@@ -3100,7 +3109,7 @@ function wzInit() {
     } else if (t.closest('#wzRepeat')) {
       const l = wzLoad(wzLastKey()); if (!l) return;
       wzFill(l, WZ_ADDR.concat(['o-desc', 'o-tarifa', 'o-cobro', 'o-prod', 'p-calle', 'p-col', 'p-ciudad', 'p-mun']));
-      ['ctipo', 'cquien'].forEach((n) => { const r = document.querySelector('input[name=' + n + '][value=' + (l[n] || 'e') + ']'); if (r) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); } });
+      ['ctipo', 'cquien', 'ceq'].forEach((n) => { const r = document.querySelector('input[name=' + n + '][value=' + (l[n] || (n === 'ceq' ? 'a' : 'e')) + ']'); if (r) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); } });
       toast('Listo: repetí tu último pedido. Revísalo.'); wzGo(WZ.steps.length - 1);
     }
   });
