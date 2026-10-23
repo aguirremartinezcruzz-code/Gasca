@@ -520,7 +520,7 @@ function startRole() {
     listen(roleUnsubs, doc(db, 'config', 'tarifas'), (s) => { S.tarifas = s.exists() ? s.data() : null; });
     roleUnsubs.push(onSnapshot(doc(db, 'fotosrep', S.uid), (sn) => { S.myThumb = sn.exists() ? (sn.data().img || '') : ''; render(); }, () => {}));
     listen(roleUnsubs, query(collection(db, 'ofertas'), where('driverId', '==', S.uid)), onOfertas);
-    roleUnsubs.push(onSnapshot(query(collection(db, 'retiros'), where('driverId', '==', S.uid)), (snap) => { const m = Object.assign({}, S.retiros || {}); snap.docs.forEach((d) => { const v = d.data(); if (v && v.codigo) m[d.id] = v.codigo; }); S.retiros = m; render(); }, () => { S.retFail = true; render(); }));
+    roleUnsubs.push(onSnapshot(query(collection(db, 'retiros'), where('driverId', '==', S.uid)), (snap) => { const m = Object.assign({}, S.retiros || {}); snap.docs.forEach((d) => { const v = d.data(); if (v && v.codigo) m[d.id] = v.codigo; }); S.retiros = m; S.retReady = true; render(); }, () => { S.retFail = true; render(); }));
     roleUnsubs.push(onSnapshot(query(collection(db, 'liberados'), where('driverId', '==', S.uid)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = (d.data() || {}).driverId || '-'; }); S.libres = m; render(); }, () => { S.retFail = true; render(); }));
   } else {
     roleUnsubs.push(onSnapshot(query(collection(db, 'liberados'), where('shopId', '==', S.uid)), (snap) => { const m = {}; snap.docs.forEach((d) => { m[d.id] = (d.data() || {}).driverId || '-'; }); S.libres = m; render(); }, () => {}));
@@ -1545,7 +1545,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 26';
+const APP_V = '23-oct-2026 · 27';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -4167,3 +4167,20 @@ function recHtml(done) {
 })();
 
 (() => { const st = document.createElement('style'); st.textContent = '.pend-box{display:flex;flex-direction:column;gap:8px;background:#fff3cd;color:#3a2f00;border:2px solid #f6b500;border-radius:16px;padding:14px;margin:0 0 12px;font-size:15px}.pend-box b{font-size:17px}:root[data-theme=dark] .pend-box{background:#3a2f00;color:#ffe9a6}'; document.head.appendChild(st); })();
+
+// Si el cliente aceptó tu oferta (o el pedido se asignó sin pasar por aquí), el código de retiro no existía: se crea solo.
+const RETBUSY = new Set();
+function ensureCodes() {
+  try {
+    if (S.role !== 'rider' || !S.uid || !S.retReady || !db) return;
+    (S.orders || []).forEach((o) => {
+      if (o.driverId !== S.uid || o.estado !== 'asignado' || (S.retiros && S.retiros[o.id]) || RETBUSY.has(o.id)) return;
+      RETBUSY.add(o.id);
+      const cd = gen4();
+      setDoc(doc(db, 'retiros', o.id), { driverId: S.uid, shopId: o.shopId || '', codigo: cd, creadoEn: Date.now() })
+        .then(() => { S.retiros = Object.assign({}, S.retiros || {}, { [o.id]: cd }); S.retFail = false; render(); })
+        .catch(() => { setTimeout(() => RETBUSY.delete(o.id), 8000); });
+    });
+  } catch (e) {}
+}
+setInterval(ensureCodes, 2500);
