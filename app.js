@@ -1298,7 +1298,7 @@ function renderVerify() {
   const el = $('#viewVerify'), st = myStatus(), slots = slotsFor(S.profile);
   const headH = '<h1>Verifica tu cuenta</h1>';
   if (st === 'revision' && !S.verEdit) {
-    el.innerHTML = headH + '<div class="empty"><b>Tus documentos están en revisión</b><span>La administración los revisa. Esta pantalla se actualiza sola cuando te aprueben.</span></div>' +
+    el.innerHTML = headH + '<div class="empty"><b>Tus documentos están en revisión</b><span>Tu solicitud será aprobada en un lapso de 24 horas.</span><span style="margin-top:10px;font-weight:700">⏳ Verificando documentos…</span></div>' +
       '<button class="btn ghost block" type="button" data-act="ver-edit">Cambiar mis documentos</button>';
     return;
   }
@@ -1490,7 +1490,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '22-oct-2026 · 17';
+const APP_V = '23-oct-2026 · 18';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
