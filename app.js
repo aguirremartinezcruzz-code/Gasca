@@ -40,7 +40,7 @@ const S = {
   roleOn: false, perm: false, dbErr: false,
   tab: '', orders: [], openOrders: [], myOrders: [], known: new Set(), openReady: false, prev: new Map(),
   wallet: null, walletReady: false, movs: [], recargas: [], pago: '', pagoDirty: false,
-  users: [], aprobs: {}, wallets: {}, presence: {},
+  users: [], aprobs: {}, wallets: {}, presence: {}, pruebas: {}, prRider: '', prMonto: '',
   review: null, revPhotos: null, suspId: null, delId: null, motivo: '',
   online: false, queue: [], ignored: new Set(), sheetId: null, sheetTaken: null, sheetT: null, sheetKey: '',
   rechargeOpen: false, cancelId: null, busy: new Set(), ac: null, wake: null
@@ -64,7 +64,7 @@ function resetData() {
     consent: false, verEdit: false, uploading: {}, perm: false, dbErr: false, tab: '',
     incs: [], incReady: false, ofertas: [], ofKnown: null, minOffer: 0, incMine: new Set(), regRead: false, regOk: false, regTop: 0, codes: {}, orders: [], openOrders: [], myOrders: [], known: new Set(), openReady: false, prev: new Map(),
     wallet: null, walletReady: false, movs: [], recargas: [], pago: '', pagoDirty: false,
-    users: [], aprobs: {}, wallets: {}, presence: {}, review: null, revPhotos: null, suspId: null, delId: null, motivo: '',
+    users: [], aprobs: {}, wallets: {}, presence: {}, pruebas: {}, prRider: '', prMonto: '', review: null, revPhotos: null, suspId: null, delId: null, motivo: '',
     online: false, queue: [], ignored: new Set(), sheetId: null, sheetTaken: null, sheetKey: '',
     rechargeOpen: false, cancelId: null, busy: new Set()
   });
@@ -740,6 +740,7 @@ function startAdmin() {
   listen(unsubs, doc(db, 'config', 'pago'), (s) => { S.pago = (s.exists() && s.data().texto) || ''; render(); });
   listen(unsubs, doc(db, 'config', 'zonas'), (s) => { S.zonas = (s.exists() && Array.isArray(s.data().zonas)) ? s.data().zonas : []; S.radioKm = (s.exists() && Number(s.data().radioKm)) || 3; render(); });
   listen(unsubs, doc(db, 'config', 'tarifas'), (s) => { S.tarifas = s.exists() ? s.data() : null; });
+  if (!S.isAgent) listen(unsubs, doc(db, 'config', 'pruebas'), (s) => { S.pruebas = (s.exists() && s.data().ids) || {}; render(); });
   listen(unsubs, query(collection(db, 'incidencias'), orderBy('creadoEn', 'desc'), limit(200)), (snap) => {
     const arr = snap.docs.map((d) => d.data()).filter((x) => x && x.id && x.tipo);
     if (S.incReady) arr.forEach((x) => { if (x.estado === 'abierta' && !S.incMine.has(x.id)) { beep([880, 660, 880]); buzz(); toast('Incidencia de ' + (x.driverName || 'un repartidor') + ': ' + (INC_TIPOS[x.tipo] || x.tipo)); } });
@@ -1159,6 +1160,39 @@ async function resolveAlta(id, ok, motivo) {
   } catch (e) { toast('No se pudo guardar. Intenta de nuevo.'); }
   S.busy.delete(k); render();
 }
+async function setPrueba() {
+  const uid = S.prRider || '', amt = Number(S.prMonto);
+  if (!S.isAdmin || S.isAgent || S.busy.has('pr')) return;
+  if (!uid) { toast('Elige un repartidor.'); return; }
+  if (!(amt >= 1 && amt <= 5000)) { toast('Pon un monto entre $1 y $5,000.'); return; }
+  S.busy.add('pr'); render();
+  try {
+    const mc = Math.round(amt * 100), b = writeBatch(db);
+    b.set(doc(db, 'config', 'pruebas'), { ids: { [uid]: true } }, { merge: true });
+    b.set(doc(db, 'wallets', uid), { saldoC: increment(mc) }, { merge: true });
+    b.set(doc(db, 'movs', 'pr_' + newId()), { driverId: uid, tipo: 'prueba', montoC: mc, creadoEn: Date.now() });
+    await b.commit();
+    S.prMonto = ''; toast('Saldo de prueba puesto: ' + pesos(amt) + '.');
+  } catch (e) { toast('No se pudo poner el saldo. Intenta de nuevo.'); }
+  S.busy.delete('pr'); render();
+}
+async function zeroPrueba(uid) {
+  const w = S.wallets[uid];
+  if (!S.isAdmin || S.isAgent || !S.pruebas || !S.pruebas[uid] || !w || S.busy.has('pr0' + uid)) return;
+  const cur = Number(w.saldoC) || 0; if (!cur) return;
+  S.busy.add('pr0' + uid); render();
+  try {
+    const b = writeBatch(db);
+    b.set(doc(db, 'wallets', uid), { saldoC: 0 }, { merge: true });
+    b.set(doc(db, 'movs', 'pr_' + newId()), { driverId: uid, tipo: 'prueba', montoC: -cur, creadoEn: Date.now() });
+    await b.commit(); toast('Saldo de prueba en $0.');
+  } catch (e) { toast('No se pudo. Intenta de nuevo.'); }
+  S.busy.delete('pr0' + uid); render();
+}
+(function () {
+  document.addEventListener('input', (e) => { if (e.target && e.target.id === 'pr-monto') S.prMonto = e.target.value; });
+  document.addEventListener('change', (e) => { if (e.target && e.target.id === 'pr-rider') S.prRider = e.target.value; });
+})();
 function copyCode(c) {
   if (!c) return;
   const fail = () => toast('Mantén presionado el código para copiarlo.');
@@ -1220,7 +1254,7 @@ function renderSheet(force) {
 }
 (function () {
   const st = document.createElement('style');
-  st.textContent = '#sheet.sheet{bottom:calc(80px + env(safe-area-inset-bottom,0px))!important;padding-inline:12px!important;z-index:21!important}.sc-wrap{pointer-events:auto;max-width:520px;margin-inline:auto;display:flex;flex-direction:column;gap:8px;max-height:min(58vh,470px);overflow:auto;padding:2px}' +
+  st.textContent = '.sv-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:6px;color:var(--ink)}.sv-row>span{min-width:0;overflow-wrap:anywhere;font-weight:700}.sv-row b{white-space:nowrap;font-size:18px}.sv-row b.neg{color:#c0392b}.sv-row .btn{margin-left:6px}#prBox select{width:100%;min-height:48px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:0 10px;font-size:16px}#prBox{margin-top:14px}' + '#sheet.sheet{bottom:calc(80px + env(safe-area-inset-bottom,0px))!important;padding-inline:12px!important;z-index:21!important}.sc-wrap{pointer-events:auto;max-width:520px;margin-inline:auto;display:flex;flex-direction:column;gap:8px;max-height:min(58vh,470px);overflow:auto;padding:2px}' +
     '.sc{background:var(--surface);color:var(--ink);border:2px solid var(--accent);border-radius:16px;padding:10px 12px 12px;display:flex;flex-direction:column;gap:7px;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:rise .22s ease-out both}' +
     '.sc.gone{text-align:center;font-weight:700;padding:14px;border-color:var(--line)}' +
     '.sc-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:19px;line-height:1.15}.sc-h b{overflow-wrap:anywhere}.sc-h span{font-size:13px;font-weight:800;color:var(--muted);white-space:nowrap}' +
@@ -1508,7 +1542,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 19';
+const APP_V = '23-oct-2026 · 20';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -1629,7 +1663,7 @@ function renderRider() {
 
 function movRow(m) {
   const plus = m.montoC >= 0;
-  const lbl = m.tipo === 'recarga' ? 'Recarga' : m.tipo === 'bono' ? 'Bono por recomendación' : 'Comisión ' + (m.orderId ? folio(m.orderId) : '');
+  const lbl = m.tipo === 'prueba' ? 'Saldo de prueba' : m.tipo === 'recarga' ? 'Recarga' : m.tipo === 'bono' ? 'Bono por recomendación' : 'Comisión ' + (m.orderId ? folio(m.orderId) : '');
   return '<div class="mov"><span>' + esc(lbl) + '<small>' + ago(m.creadoEn) + '</small></span><span class="' + (plus ? 'plus' : 'minus') + '">' + (plus ? '+' : '−') + cents(Math.abs(m.montoC)) + '</span></div>';
 }
 /* Ficha de depósito: monto exacto y número grande, separado de 4 en 4, para que la cajera lo teclee sin error. */
@@ -1867,13 +1901,22 @@ function renderAdmin() {
   }
   if (S.tab === 'saldos') {
     const nm = {}; S.users.forEach((u) => { nm[u.id] = u.name; });
+    const pr = S.pruebas || {}, real = (m) => !pr[m.driverId];
     const ids = Object.keys(S.wallets).sort((a, b) => (S.wallets[b].saldoC || 0) - (S.wallets[a].saldoC || 0));
-    const com = S.movs.filter((m) => m.tipo === 'comision').reduce((s, m) => s - m.montoC, 0);
-    const rec = S.movs.filter((m) => m.tipo === 'recarga').reduce((s, m) => s + m.montoC, 0);
+    const com = S.movs.filter((m) => m.tipo === 'comision' && real(m)).reduce((s, m) => s - m.montoC, 0);
+    const rec = S.movs.filter((m) => m.tipo === 'recarga' && real(m)).reduce((s, m) => s + m.montoC, 0);
     let t = '<h2 class="section">Saldos</h2><div class="rider-head"><div class="today"><div><b>' + cents(com) + '</b><small>Comisiones</small></div><div><b>' + cents(rec) + '</b><small>Recargado</small></div></div></div>';
-    t += ids.length ? '<div>' + ids.map((id) => '<div class="drv"><span>' + esc(nm[id] || 'Repartidor') + '</span><b class="' + ((S.wallets[id].saldoC || 0) <= 0 ? 'neg' : '') + '">' + cents(S.wallets[id].saldoC) + '</b></div>').join('') + '</div>'
+    t += ids.length ? '<div>' + ids.map((id) => '<div class="sv-row"><span>' + esc(nm[id] || 'Repartidor') + (pr[id] ? ' 🧪 <small>prueba</small>' + ((S.wallets[id].saldoC || 0) ? ' <button class="btn ghost small" type="button" data-act="pr-zero" data-id="' + esc(id) + '"' + (S.busy.has('pr0' + id) ? ' disabled' : '') + '>Poner en $0</button>' : '') : '') + '</span><b class="' + ((S.wallets[id].saldoC || 0) <= 0 ? 'neg' : '') + '">' + cents(S.wallets[id].saldoC) + '</b></div>').join('') + '</div>'
       : emptyBox('Sin repartidores todavía', 'Aquí ves el saldo de cada repartidor cuando recargue o entregue su primer pedido.');
-    sd.innerHTML = t;
+    if (!S.isAgent) {
+      const riders = S.users.filter((u) => u.role === 'rider').sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      t += '<div class="paynote" id="prBox"><b>🧪 Saldo de prueba</b><br>Para probar la app con una cuenta de repartidor. Este saldo <b>no se cuenta</b> en Comisiones ni en Recargado, ni lo que se descuente a esa cuenta después.' +
+        '<div class="field" style="margin-top:8px"><label for="pr-rider">Repartidor</label><select id="pr-rider"><option value="">Elige un repartidor</option>' + riders.map((u) => '<option value="' + esc(u.id) + '"' + (S.prRider === u.id ? ' selected' : '') + '>' + esc(repTag(u.id) + u.name) + '</option>').join('') + '</select></div>' +
+        '<div class="field"><label for="pr-monto">Monto de prueba</label><input id="pr-monto" type="number" inputmode="decimal" min="1" max="5000" placeholder="$ cuánto saldo de prueba" value="' + esc(S.prMonto || '') + '"></div>' +
+        '<button class="btn primary block" type="button" data-act="pr-set"' + (S.busy.has('pr') ? ' disabled' : '') + '>' + (S.busy.has('pr') ? 'Poniendo…' : 'Poner saldo de prueba') + '</button></div>';
+    }
+    const ae = document.activeElement;
+    if (!(ae && sd.contains(ae) && /^(INPUT|SELECT)$/.test(ae.tagName))) sd.innerHTML = t;
   }
   const all = [
     { id: 'monitor', label: 'En vivo', badge: S.orders.filter((o) => o.estado === 'abierto').length },
@@ -2088,6 +2131,8 @@ document.addEventListener('click', (e) => {
   else if (act === 'recharge-toggle') { S.rechargeOpen = !S.rechargeOpen; render(); }
   else if (act === 'amt') { $('#r-monto').value = b.getAttribute('data-v'); }
   else if (act === 'rc-ok') resolveRecarga(id, true);
+  else if (act === 'pr-set') setPrueba();
+  else if (act === 'pr-zero') zeroPrueba(id);
   else if (act === 'rc-no') resolveRecarga(id, false);
   else if (act === 'copy') copyCode(b.getAttribute('data-v'));
   else if (act === 'save-pago') savePago();
