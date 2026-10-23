@@ -1542,7 +1542,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 20';
+const APP_V = '23-oct-2026 · 21';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -2328,12 +2328,18 @@ document.addEventListener('click', (e) => {
       if (key !== UI.routeKey && (!UI.route || Date.now() - UI.lastFetch > 15000 || UI.fitKey !== o.id + o.estado)) { UI.routeKey = key; if (UI.fitKey !== o.id + o.estado) UI.route = null; fetchRoute(wps, key); }
       if (UI.route) { map.setRoute(UI.route.pts); UI.route.oid = o.id; }
       const fk = o.id + o.estado; if (UI.fitKey !== fk) { UI.fitKey = fk; UI.follow = false; let bb = 210; if (offer) { const sh = document.getElementById('sheet'), mr = UI.wrap.getBoundingClientRect(); bb = Math.max(60, mr.bottom - (window.innerHeight - (sh ? sh.offsetHeight : 0)) + 36); } map.fit(wps, { t: offer ? 90 : 160, b: bb }); }
+    } else {
+      // no se pudo ubicar el destino: no dejar la ruta vieja (la del restaurante) como si fuera la actual
+      if (UI.route || UI.routeKey) { map.setRoute(null); UI.route = null; UI.routeKey = ''; }
+      const fk2 = o.id + o.estado; if (UI.fitKey !== fk2) { UI.fitKey = fk2; UI.follow = true; if (me) map.setView(me[0], me[1], 16); }
     }
     const km = document.getElementById('shKm'); if (km) put(km, offer && UI.route && UI.route.m ? offerKm(UI.route) : (km.textContent || ''));
     if (offer) { if (UI.chip) { UI.chip = ''; chip.hidden = true; chip.innerHTML = ''; } return; }
     const r = UI.route, lbl = o.estado === 'asignado' ? 'Recoger: ' + (o.shop || 'restaurante') : 'Entregar: ' + (destParts(o.dest).dir || '').slice(0, 40);
-    const extra = r && r.m ? ' · ' + (r.m < 1000 ? Math.round(r.m / 10) * 10 + ' m' : (r.m / 1000).toFixed(1) + ' km') + ' · ' + Math.max(1, Math.round(r.s / 60)) + ' min' : '';
-    const nav = target ? 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + llTxt(target) : mapsUrl(o.estado === 'asignado' ? o.pickup : o.dest);
+    const pend = o.estado !== 'asignado' && !ds && geoCached(o.dest) === undefined, miss = o.estado !== 'asignado' && !ds && !pend, apx = !miss && ds && geoApprox(o.estado === 'asignado' ? o.pickup : o.dest);
+    const dtxt = r && r.m ? ' · ' + (r.m < 1000 ? Math.round(r.m / 10) * 10 + ' m' : (r.m / 1000).toFixed(1) + ' km') + ' · ' + Math.max(1, Math.round(r.s / 60)) + ' min' : '';
+    const extra = pend ? ' · ubicando…' : miss ? ' · no la ubico en el mapa, usa Navegar' : dtxt + (apx ? ' · aprox.' : '');
+    const nav = target && !apx ? 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + llTxt(target) : mapsUrl(o.estado === 'asignado' ? o.pickup : o.dest);
     const html = '<span>' + esc(lbl + extra) + '</span><a href="' + esc(nav) + '" target="_blank" rel="noopener">Navegar</a>';
     if (UI.chip !== html) { UI.chip = html; chip.innerHTML = html; chip.hidden = false; }
   }
@@ -3677,10 +3683,14 @@ function geoSave() { try { const k = Object.keys(GEO.cache); if (k.length > 300)
 function geoQueries(txt) {
   const t = String(txt || '').replace(/\s*[—-]\s*Ref:.*$/i, '').replace(/\bInt\.?\s*\S+/ig, '').replace(/\bCol\.?\s+/ig, '').replace(/\s+/g, ' ').trim();
   const parts = t.split(',').map((x) => x.trim()).filter(Boolean), tail = /nayarit/i.test(t) ? '' : ', Nayarit, México';
-  const out = [parts.join(', ') + tail, parts.map((p) => p.replace(/\b\d+\w*\b/g, '').trim()).filter(Boolean).join(', ') + tail];
-  if (parts.length > 2) out.push(parts.slice(1).join(', ') + tail);
-  return out.filter((x, i) => x.length > 8 && out.indexOf(x) === i);
+  const base = [parts.join(', ') + tail, parts.map((p) => p.replace(/\b\d+\w*\b/g, '').trim()).filter(Boolean).join(', ') + tail].filter((x, i, a) => x.length > 8 && a.indexOf(x) === i);
+  const loose = [];
+  if (parts.length > 2) { loose.push(parts.slice(1).join(', ') + tail); loose.push(parts.slice(-2).join(', ') + tail); }
+  const res = base.concat(loose.filter((x, i) => x.length > 8 && base.indexOf(x) < 0 && loose.indexOf(x) === i));
+  res.looseFrom = base.length; // de aquí en adelante ya no se usó la calle: el punto es solo de la zona
+  return res;
 }
+function geoApprox(txt) { try { return !!geoLoad()[nrm(txt) + '~']; } catch (e) { return false; } }
 async function geoFetch(q) {
   const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 9000);
   try {
@@ -3696,17 +3706,20 @@ async function geoPump() {
     const it = GEO.q.shift(), c = geoLoad();
     if (it.key in c) { it.res(c[it.key]); continue; }
     let pt = null, failed = false;
+    let qi = 0;
     for (const q of it.qs) {
       const wait = GEO.last + 1150 - Date.now(); if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       try { GEO.last = Date.now(); pt = await geoFetch(q); } catch (e) { failed = true; break; }
       if (pt) break;
+      qi++;
     }
-    if (!failed) { c[it.key] = pt || 0; geoSave(); }
+    if (!failed) { c[it.key] = pt || 0; if (pt && it.qs.looseFrom != null && qi >= it.qs.looseFrom) c[it.key + '~'] = 1; geoSave(); }
     if (failed) GEO.fail.add(it.key);
     it.res(failed ? null : pt);
   }
   GEO.busy = false;
 }
+setInterval(() => { try { GEO.fail.clear(); } catch (e) {} }, 45000);
 const geoPoint = (txt) => new Promise((res) => { const qs = geoQueries(txt), key = nrm(txt); if (!qs.length) { res(null); return; } GEO.q.push({ key, qs, res }); geoPump(); });
 function hav(a, b) { const R = 6371, d = Math.PI / 180, dl = (b[0] - a[0]) * d, dn = (b[1] - a[1]) * d, x = Math.sin(dl / 2) ** 2 + Math.cos(a[0] * d) * Math.cos(b[0] * d) * Math.sin(dn / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); }
 function distFor(o) {
