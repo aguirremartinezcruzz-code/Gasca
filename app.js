@@ -1556,7 +1556,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 31';
+const APP_V = '23-oct-2026 · 32';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -3581,6 +3581,12 @@ const zonesKey = () => 'gasca_zonas_' + S.uid;
 function myZones() { try { const a = JSON.parse(lsGet(zonesKey()) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
 const modoKey = () => 'gasca_modo_' + S.uid;
 function rMode() { return 'cerca'; }
+// De noche hay menos pedidos: de 9 pm a 6 am el radio es de 20 km, sin importar el radio de día.
+const NIGHT_KM = 20, NIGHT_FROM = 21, NIGHT_TO = 6;
+const isNight = () => { const h = new Date().getHours(); return h >= NIGHT_FROM || h < NIGHT_TO; };
+const effKm = () => (isNight() ? NIGHT_KM : (S.radioKm || 3));
+let lastNight = isNight();
+setInterval(() => { try { const n = isNight(); if (n !== lastNight) { lastNight = n; if (S.role === 'rider') refilter(); } } catch (e) {} }, 20000);
 function geoCached(txt) { const c = geoLoad(), k = nrm(txt); if (k in c) return c[k]; if (GEO.fail.has(k)) return null; return undefined; }
 function nearOk(o) {
   if (!S.pos) return true; /* sin GPS aún: mejor mostrar el pedido que esconderlo */
@@ -3591,7 +3597,7 @@ function nearOk(o) {
     return false;
   }
   if (!pt) return true;
-  return hav([S.pos.lat, S.pos.lon], pt) <= (S.radioKm || 3);
+  return hav([S.pos.lat, S.pos.lon], pt) <= effKm();
 }
 function refilter() {
   if (S.role !== 'rider') return;
@@ -3652,7 +3658,7 @@ function zoneTag(o) { const z = zoneOf(o); return z ? '<br><small>📍 ' + esc(z
   const src = () => JSON.stringify(S.zonas || []);
   function html() {
     const unk = []; (S.orders || []).forEach((o) => { if (o.pickup && !zoneOf(o) && unk.indexOf(o.pickup) < 0) unk.push(o.pickup); });
-    return '<h2 class="section">Pedidos cercanos</h2><p class="hint">Los repartidores reciben solo los pedidos que están a este radio de donde se encuentran, usando el GPS de su celular (siempre encendido mientras están en línea).</p><div class="field"><label for="zn-radio">Radio (km)</label><input type="number" id="zn-radio" min="0.5" max="20" step="0.5" inputmode="decimal" value="' + radio + '"></div><h2 class="section" style="margin-top:18px">Tarifa por distancia (restaurantes)</h2><p class="hint">La app calcula los km entre el negocio y el cliente y sugiere esta tarifa. El negocio puede cambiarla.</p>' +
+    return '<h2 class="section">Pedidos cercanos</h2><p class="hint">Los repartidores reciben solo los pedidos que están a este radio de donde se encuentran, usando el GPS de su celular (siempre encendido mientras están en línea). De 9 pm a 6 am el radio es automáticamente de 20 km.</p><div class="field"><label for="zn-radio">Radio (km)</label><input type="number" id="zn-radio" min="0.5" max="20" step="0.5" inputmode="decimal" value="' + radio + '"></div><h2 class="section" style="margin-top:18px">Tarifa por distancia (restaurantes)</h2><p class="hint">La app calcula los km entre el negocio y el cliente y sugiere esta tarifa. El negocio puede cambiarla.</p>' +
       [0, 1, 2].map((k) => '<div class="field"><label>Tramo ' + (k + 1) + '</label><div style="display:flex;gap:8px;align-items:center">hasta <input type="number" id="tr-h' + k + '" min="0.5" step="0.5" inputmode="decimal" value="' + esc(String(tar.tramos[k].hasta)) + '" style="width:90px"> km → $ <input type="number" id="tr-p' + k + '" min="1" step="1" inputmode="numeric" value="' + esc(String(tar.tramos[k].precio)) + '" style="width:90px"></div></div>').join('') +
       '<div class="field"><label>Después del último tramo, cada km extra</label><div style="display:flex;gap:8px;align-items:center">$ <input type="number" id="tr-x" min="0" step="1" inputmode="numeric" value="' + esc(String(tar.extra)) + '" style="width:90px"></div></div>' +
       '<button class="btn primary block" type="button" data-zact="save" style="margin-top:10px">Guardar</button>';
@@ -3892,7 +3898,7 @@ function tarFor(km) {
     if (!el && head) { el = document.createElement('div'); el.id = 'modeBar'; head.after(el); }
     if (!el) return;
     el.hidden = !show; if (!show) return;
-    const m = rMode(), km = S.radioKm || 3;
+    const m = rMode(), km = effKm();
     let msg = '', bad = '';
     if (!('geolocation' in navigator)) { msg = 'Tu celular no permite usar la ubicación, no podrás recibir pedidos.'; bad = ' bad'; }
     else if (!S.online) msg = 'Ponte En línea con el GPS encendido para recibir pedidos cerca de ti.';
