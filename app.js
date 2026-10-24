@@ -794,13 +794,13 @@ const OCI = {
 function slHtml(key, id, text, locked) {
   return '<div class="sl' + (locked ? ' lock' : '') + '" data-sl="' + key + '" data-id="' + esc(id) + '" role="button" tabindex="0" aria-label="' + esc(text) + '"><span class="sl-t">' + esc(text) + '</span><i class="sl-h">' + (locked ? OCI.lock : OCI.arrow) + '</i></div>';
 }
-function ocMoney(o) {
+function ocMoney(o, ro) {
   const d = pdesc(o), T = Number(o.tarifa) || 0, P = d.prod || 0, cobro = Number(o.cobro) || 0, com = comC(o) / 100, rec = d.quien === 'r';
   let h = '<div class="oc-pay">' + (cobro > 0 ? 'PAGO: EFECTIVO · cobra ' + pesos(cobro) : 'No cobres nada al entregar' + (d.tipo && !rec ? ' · quien envía te paga el envío' : '')) + '</div>';
   if (d.tipo === 'v') h += '<div class="oc-pay2">Paga al restaurante ' + pesos(P) + ' en efectivo al recoger.</div><div class="oc-l"><span>Producto (para el restaurante)</span><b>' + pesos(P) + '</b></div>';
   h += '<div class="oc-l"><span>Envío (tu ganancia)</span><b>' + pesos(T) + '</b></div>';
   if (cobro > 0) h += '<div class="oc-tot"><span>Total a cobrar</span><b>' + pesos(cobro) + '</b></div>';
-  h += '<div class="oc-com">Comisión por usar la app ' + m2(com) + ' · Te quedan ' + m2(T - com) + '</div>';
+  if (ro) h += '<div class="oc-com">Comisión por usar la app ' + m2(com) + ' · Te quedan ' + m2(T - com) + '</div>'; // la comisión solo se ve en Mis pedidos y Mi resumen
   return '<div class="oc-box"><div class="oc-h">Lo que lleva el repartidor</div>' + h + '</div>';
 }
 function ocHtml(o, ro) {
@@ -816,7 +816,7 @@ function ocHtml(o, ro) {
   } else if (live && reco) h += '<div class="oc-ok">✅ Pedido liberado y recogido.</div>';
   h += '<div class="oc-sec"><div class="oc-k">Entregar a</div><div class="oc-n">' + esc(o.cliente || 'Cliente') + '</div>' + (o.tel ? '<div class="oc-a">' + esc(o.tel) + '</div>' : '') +
     '<div class="oc-a">' + esc(dp.dir) + '</div>' + (dp.ref ? '<div class="oc-ref">Referencia: ' + esc(dp.ref) + '</div>' : '') + (pdesc(o).t ? '<div class="oc-ref">Lleva: ' + esc(pdesc(o).t) + '</div>' : '') + (EQL[pdesc(o).eq] ? '<div class="oc-ref"><b>Equipo: ' + EQL[pdesc(o).eq] + '</b></div>' : '') + '</div>';
-  h += ocMoney(o);
+  h += ocMoney(o, ro);
   if (ro && (o.estado === 'cancelado' || o.liberado)) h += '<div class="oc-box"><div class="oc-h">Por qué no se entregó</div><div class="oc-a">' + esc(noReason(o) || 'Sin detalle.') + '</div></div>';
   if (live) {
     h += '<div class="oc-h2">Ruta ' + (asig ? 'al restaurante' : 'al cliente') + '</div><div class="oc-btns">' +
@@ -956,7 +956,7 @@ async function delivered(id, codigoIn) {
       tx.set(doc(db, 'movs', 'cm_' + id), { driverId: S.uid, tipo: 'comision', montoC: -com, orderId: id, creadoEn: now });
     });
     deliveredLocal(id, o);
-    toast('Entrega registrada. Se descontó ' + cents(comC(o)) + ' de comisión.');
+    toast('Entrega registrada.');
   } catch (e) {
     // si la entrega sí quedó guardada (mala señal, doble toque…), se da por buena
     try {
@@ -1479,7 +1479,6 @@ function availCard(o) {
     '<div class="line"><span class="k">Entregar en</span><span class="v">' + esc(o.dest) + '</span></div>' + distLine(o) +
     '<div class="line"><span class="k">Lleva</span><span class="v">' + esc(pdesc(o).t) + '</span></div>' +
     moneyRow(o) + eqNote(o) + payNote(o) +
-    '<p class="hint">Comisión de ' + cents(comC(o)) + ' (13%) al entregar.</p>' +
     '<div class="actions">' + acceptBtn(o, S.busy.has(o.id)) + '</div>' + offerBtns(o) + '</article>';
 }
 function tripCard(o) {
@@ -1557,7 +1556,7 @@ function mpDiv() {
   if (!el) { el = document.createElement('div'); el.id = 'riderPed'; el.hidden = true; const ref = document.getElementById('riderWallet'); ref.parentNode.insertBefore(el, ref); }
   return el;
 }
-const APP_V = '23-oct-2026 · 30';
+const APP_V = '23-oct-2026 · 31';
 function renderPerfil(el) {
   const dot = document.getElementById('gDot'); if (dot) dot.classList.toggle('off', !S.online);
   let opts = 0; try { const i = window.__gmInfo && window.__gmInfo(); opts = i && i.opts ? i.opts.length : 0; } catch (e) {}
@@ -2710,7 +2709,7 @@ async function libDeliver(id, code) {
       tx.set(doc(db, 'movs', 'cm_' + id), { driverId: S.uid, tipo: 'comision', montoC: -com, orderId: id, creadoEn: now });
     });
     deliveredLocal(id, o); lsSet('gasca_naSent_' + id, '');
-    toast('Pedido liberado por administración. Se descontó ' + cents(comC(o)) + ' de comisión.');
+    toast('Pedido liberado por administración.');
     S.busy.delete(id); render(); return true;
   } catch (e) { S.busy.delete(id); render(); return false; }
 }
